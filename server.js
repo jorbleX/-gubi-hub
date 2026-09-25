@@ -6,7 +6,9 @@ app.use(express.json());
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
+
 const GUBI_HUB = "https://jorblex.github.io/-gubi-hub/";
+const WEBHOOK_URL = "https://gubi-hub.onrender.com/webhook";
 
 app.get("/", (req, res) => {
   res.send("❄️ GUBI Bot is running!");
@@ -69,13 +71,13 @@ GUBI eats the market. 🟢`,
 
     res.sendStatus(200);
   } catch (error) {
-    console.error(error);
+    console.error("Webhook error:", error);
     res.sendStatus(200);
   }
 });
 
 async function sendMessage(chatId, text, replyMarkup) {
-  await fetch(`${TELEGRAM_API}/sendMessage`, {
+  const response = await fetch(`${TELEGRAM_API}/sendMessage`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -86,10 +88,30 @@ async function sendMessage(chatId, text, replyMarkup) {
       reply_markup: replyMarkup
     })
   });
+
+  const data = await response.json();
+
+  if (!data.ok) {
+    console.error("Telegram sendMessage error:", data);
+  }
+
+  return data;
 }
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`GUBI Bot running on port ${PORT}`);
+
+  try {
+    const response = await fetch(
+      `${TELEGRAM_API}/setWebhook?url=${encodeURIComponent(WEBHOOK_URL)}`
+    );
+
+    const data = await response.json();
+
+    console.log("Telegram webhook:", data);
+  } catch (error) {
+    console.error("Webhook setup failed:", error);
+  }
 });
