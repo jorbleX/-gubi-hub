@@ -48,6 +48,9 @@ const BOT_ID =
     TOKEN.split(":")[0]
   );
 
+const BOT_USERNAME =
+  "GubiCommunityBot";
+
 if (!BOT_ID) {
   throw new Error(
     "Invalid Telegram bot token"
@@ -72,6 +75,7 @@ const ALLOWED_ORIGIN =
 
 app.use(
   (req, res, next) => {
+
     res.setHeader(
       "Access-Control-Allow-Origin",
       ALLOWED_ORIGIN
@@ -104,6 +108,7 @@ app.use(
 app.get(
   "/",
   (req, res) => {
+
     res.send(
       "❄️ GUBI Bot is running!"
     );
@@ -113,6 +118,7 @@ app.get(
 app.get(
   "/api/health",
   (req, res) => {
+
     res.json({
       ok: true,
       service:
@@ -128,6 +134,7 @@ app.get(
 async function validateTelegramInitData(
   initData
 ) {
+
   if (!initData) {
     throw new Error(
       "Open GUBI Hub from Telegram."
@@ -138,6 +145,7 @@ async function validateTelegramInitData(
 
   // Method 1
   try {
+
     validate(
       initData,
       TOKEN,
@@ -151,7 +159,9 @@ async function validateTelegramInitData(
     console.log(
       "✅ Telegram validation: bot token"
     );
+
   } catch (error) {
+
     console.log(
       "Bot-token validation failed:",
       error?.name ||
@@ -161,7 +171,9 @@ async function validateTelegramInitData(
 
   // Method 2
   if (!validated) {
+
     try {
+
       await validate3rd(
         initData,
         BOT_ID,
@@ -176,7 +188,9 @@ async function validateTelegramInitData(
       console.log(
         "✅ Telegram validation: public signature"
       );
+
     } catch (error) {
+
       console.error(
         "Third-party Telegram validation failed:",
         error?.name ||
@@ -208,9 +222,12 @@ async function validateTelegramInitData(
   let user;
 
   try {
+
     user =
       JSON.parse(rawUser);
+
   } catch {
+
     throw new Error(
       "Invalid Telegram user data"
     );
@@ -244,6 +261,7 @@ async function supabaseRequest(
     prefer = null
   } = {}
 ) {
+
   const headers = {
     apikey:
       SUPABASE_SECRET_KEY,
@@ -278,15 +296,20 @@ async function supabaseRequest(
   let data = null;
 
   if (raw) {
+
     try {
+
       data =
         JSON.parse(raw);
+
     } catch {
+
       data = raw;
     }
   }
 
   if (!response.ok) {
+
     console.error(
       "SUPABASE ERROR:",
       {
@@ -312,7 +335,9 @@ async function supabaseRequest(
 async function createOrUpdateUser(
   telegramUser
 ) {
+
   const payload = {
+
     telegram_id:
       telegramUser.id,
 
@@ -361,6 +386,7 @@ async function createOrUpdateUser(
 async function getUser(
   telegramId
 ) {
+
   const data =
     await supabaseRequest(
       `users?telegram_id=eq.${telegramId}&select=*`
@@ -379,6 +405,7 @@ async function getUser(
 function formatUser(
   user
 ) {
+
   if (!user) {
     return null;
   }
@@ -409,13 +436,220 @@ function formatUser(
 }
 
 // ======================================================
+// REFERRAL SYSTEM
+// ======================================================
+
+function referralLink(
+  telegramId
+) {
+
+  return (
+    `https://t.me/${BOT_USERNAME}` +
+    `?start=ref_${telegramId}`
+  );
+}
+
+function getReferralId(
+  startParam
+) {
+
+  if (
+    !startParam ||
+    !startParam.startsWith(
+      "ref_"
+    )
+  ) {
+    return null;
+  }
+
+  const id =
+    Number(
+      startParam.replace(
+        "ref_",
+        ""
+      )
+    );
+
+  if (
+    !Number.isSafeInteger(id) ||
+    id <= 0
+  ) {
+    return null;
+  }
+
+  return id;
+}
+
+async function applyReferral(
+  telegramUser,
+  startParam
+) {
+
+  const inviterId =
+    getReferralId(
+      startParam
+    );
+
+  if (!inviterId) {
+    return {
+      applied: false
+    };
+  }
+
+  const inviteeId =
+    Number(
+      telegramUser.id
+    );
+
+  // Cannot invite yourself.
+  if (
+    inviterId ===
+    inviteeId
+  ) {
+    return {
+      applied: false,
+      reason:
+        "self-referral"
+    };
+  }
+
+  // Make sure invitee exists.
+  await createOrUpdateUser(
+    telegramUser
+  );
+
+  const invitee =
+    await getUser(
+      inviteeId
+    );
+
+  if (!invitee) {
+    return {
+      applied: false
+    };
+  }
+
+  // Already referred before.
+  if (
+    invitee.referred_by
+  ) {
+    return {
+      applied: false,
+      reason:
+        "already-referred"
+    };
+  }
+
+  const inviter =
+    await getUser(
+      inviterId
+    );
+
+  if (!inviter) {
+    return {
+      applied: false,
+      reason:
+        "inviter-not-found"
+    };
+  }
+
+  // Assign inviter only if
+  // referred_by is still empty.
+  const updatedInvitee =
+    await supabaseRequest(
+      `users?telegram_id=eq.${inviteeId}&referred_by=is.null`,
+      {
+        method:
+          "PATCH",
+
+        body: {
+          referred_by:
+            inviterId,
+
+          updated_at:
+            new Date()
+              .toISOString()
+        },
+
+        prefer:
+          "return=representation"
+      }
+    );
+
+  // Another request already
+  // registered the referral.
+  if (
+    !updatedInvitee ||
+    updatedInvitee.length ===
+    0
+  ) {
+
+    return {
+      applied: false,
+      reason:
+        "already-referred"
+    };
+  }
+
+  const newXp =
+    Number(
+      inviter.xp ||
+      0
+    ) + 50;
+
+  const newReferralCount =
+    Number(
+      inviter.referral_count ||
+      0
+    ) + 1;
+
+  await supabaseRequest(
+    `users?telegram_id=eq.${inviterId}`,
+    {
+      method:
+        "PATCH",
+
+      body: {
+        xp:
+          newXp,
+
+        referral_count:
+          newReferralCount,
+
+        updated_at:
+          new Date()
+            .toISOString()
+      },
+
+      prefer:
+        "return=representation"
+    }
+  );
+
+  console.log(
+    `✅ REFERRAL: ${inviterId} invited ${inviteeId} +50 XP`
+  );
+
+  return {
+    applied: true,
+
+    inviterId,
+
+    reward:
+      50
+  };
+}
+
+// ======================================================
 // API: CURRENT USER
 // ======================================================
 
 app.post(
   "/api/me",
   async (req, res) => {
+
     try {
+
       const {
         initData
       } = req.body;
@@ -476,7 +710,9 @@ app.post(
 app.post(
   "/api/checkin",
   async (req, res) => {
+
     try {
+
       const {
         initData
       } = req.body;
@@ -528,18 +764,19 @@ app.post(
             10
           );
 
-      // Already claimed
       if (
         user.last_checkin ===
         today
       ) {
+
         return res.json({
           ok: true,
 
           already_claimed:
             true,
 
-          reward: 0,
+          reward:
+            0,
 
           user:
             formatUser(
@@ -548,7 +785,6 @@ app.post(
         });
       }
 
-      // Streak
       let newStreak =
         1;
 
@@ -556,6 +792,7 @@ app.post(
         user.last_checkin ===
         yesterday
       ) {
+
         newStreak =
           Number(
             user.streak ||
@@ -563,7 +800,6 @@ app.post(
           ) + 1;
       }
 
-      // XP
       const newXp =
         Number(
           user.xp ||
@@ -578,6 +814,7 @@ app.post(
               "PATCH",
 
             body: {
+
               xp:
                 newXp,
 
@@ -602,6 +839,7 @@ app.post(
         updatedRows.length ===
         0
       ) {
+
         const latestUser =
           await getUser(
             user.telegram_id
@@ -673,7 +911,9 @@ app.post(
 app.post(
   "/api/leaderboard",
   async (req, res) => {
+
     try {
+
       const {
         initData
       } = req.body;
@@ -694,7 +934,11 @@ app.post(
 
       const normalized =
         (users || []).map(
-          (user, index) => ({
+          (
+            user,
+            index
+          ) => ({
+
             rank:
               index + 1,
 
@@ -712,12 +956,14 @@ app.post(
 
             xp:
               Number(
-                user.xp || 0
+                user.xp ||
+                0
               ),
 
             streak:
               Number(
-                user.streak || 0
+                user.streak ||
+                0
               )
           })
         );
@@ -746,16 +992,8 @@ app.post(
         leaderboard,
 
         me:
-          me || {
-            rank:
-              null,
-
-            telegram_id:
-              telegramData.user.id,
-
-            xp:
-              0
-          }
+          me ||
+          null
       });
 
     } catch (error) {
@@ -780,13 +1018,97 @@ app.post(
 );
 
 // ======================================================
+// API: REFERRAL INFO
+// ======================================================
+
+app.post(
+  "/api/referral",
+  async (req, res) => {
+
+    try {
+
+      const {
+        initData
+      } = req.body;
+
+      const telegramData =
+        await validateTelegramInitData(
+          initData
+        );
+
+      await createOrUpdateUser(
+        telegramData.user
+      );
+
+      const user =
+        await getUser(
+          telegramData.user.id
+        );
+
+      if (!user) {
+        throw new Error(
+          "User not found"
+        );
+      }
+
+      return res.json({
+        ok: true,
+
+        referral: {
+
+          link:
+            referralLink(
+              user.telegram_id
+            ),
+
+          count:
+            Number(
+              user.referral_count ||
+              0
+            ),
+
+          reward:
+            50,
+
+          xp:
+            Number(
+              user.xp ||
+              0
+            )
+        }
+      });
+
+    } catch (error) {
+
+      console.error(
+        "/api/referral error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          ok:
+            false,
+
+          error:
+            error?.message ||
+            "Referral failed"
+        });
+    }
+  }
+);
+
+// ======================================================
 // DATABASE HEALTH
 // ======================================================
 
 app.get(
   "/api/database-health",
   async (req, res) => {
+
     try {
+
       await supabaseRequest(
         "users?select=telegram_id&limit=1"
       );
@@ -801,19 +1123,11 @@ app.get(
 
     } catch (error) {
 
-      console.error(
-        "Database health:",
-        error
-      );
-
       return res
         .status(500)
         .json({
           ok:
             false,
-
-          database:
-            "Supabase failed",
 
           error:
             error.message
@@ -829,6 +1143,7 @@ app.get(
 app.post(
   "/webhook",
   async (req, res) => {
+
     try {
 
       const message =
@@ -838,6 +1153,7 @@ app.post(
         !message ||
         !message.text
       ) {
+
         return res.sendStatus(
           200
         );
@@ -846,25 +1162,77 @@ app.post(
       const chatId =
         message.chat.id;
 
+      const text =
+        message.text.trim();
+
+      const parts =
+        text.split(
+          /\s+/
+        );
+
       const command =
-        message.text
-          .split(" ")[0];
+        parts[0];
+
+      const startParam =
+        parts[1] ||
+        null;
+
+      // Create Telegram user
+      // whenever they interact.
+      if (message.from) {
+
+        await createOrUpdateUser(
+          message.from
+        );
+      }
+
+      // =================================================
+      // /START
+      // =================================================
 
       if (
         command ===
         "/start"
       ) {
 
-        await sendMessage(
-          chatId,
+        let referralResult =
+          null;
 
-          `❄️ Welcome to GUBI
+        if (
+          startParam &&
+          message.from
+        ) {
+
+          referralResult =
+            await applyReferral(
+              message.from,
+              startParam
+            );
+        }
+
+        let welcomeText =
+`❄️ Welcome to GUBI
 
 Welcome to the snow.
 
 Complete missions, earn XP and climb the leaderboard. 👀
 
-GUBI eats the market. 🟢`,
+GUBI eats the market. 🟢`;
+
+        if (
+          referralResult?.applied
+        ) {
+
+          welcomeText +=
+
+`\n\n👥 You joined through a GUBI referral.
+Your friend earned +50 XP.`;
+        }
+
+        await sendMessage(
+          chatId,
+
+          welcomeText,
 
           {
             inline_keyboard: [
@@ -884,22 +1252,55 @@ GUBI eats the market. 🟢`,
         );
       }
 
+      // =================================================
+      // /HUB
+      // =================================================
+
       if (
         command ===
         "/hub"
       ) {
 
+        await sendHubButton(
+          chatId
+        );
+      }
+
+      // =================================================
+      // /PROFILE
+      // =================================================
+
+      if (
+        command ===
+        "/profile"
+      ) {
+
+        const user =
+          await getUser(
+            message.from.id
+          );
+
+        const formatted =
+          formatUser(
+            user
+          );
+
         await sendMessage(
           chatId,
 
-          "❄️ Enter the GUBI Community Hub:",
+`👤 GUBI PROFILE
+
+❄️ Level ${formatted?.level || 1}
+⚡ ${formatted?.xp || 0} XP
+🔥 ${formatted?.streak || 0} day streak
+👥 ${formatted?.referral_count || 0} friends invited`,
 
           {
             inline_keyboard: [
               [
                 {
                   text:
-                    "❄️ OPEN GUBI HUB",
+                    "❄️ OPEN PROFILE",
 
                   web_app: {
                     url:
@@ -909,6 +1310,140 @@ GUBI eats the market. 🟢`,
               ]
             ]
           }
+        );
+      }
+
+      // =================================================
+      // /MISSIONS
+      // =================================================
+
+      if (
+        command ===
+        "/missions"
+      ) {
+
+        await sendHubButton(
+          chatId,
+          "⚡ Open GUBI Hub to view your missions."
+        );
+      }
+
+      // =================================================
+      // /RAIDS
+      // =================================================
+
+      if (
+        command ===
+        "/raids"
+      ) {
+
+        await sendHubButton(
+          chatId,
+          "📣 Open GUBI Hub to view active raids."
+        );
+      }
+
+      // =================================================
+      // /LEADERBOARD
+      // =================================================
+
+      if (
+        command ===
+        "/leaderboard"
+      ) {
+
+        await sendHubButton(
+          chatId,
+          "🏆 Open GUBI Hub to view the leaderboard."
+        );
+      }
+
+      // =================================================
+      // /INVITE
+      // =================================================
+
+      if (
+        command ===
+        "/invite"
+      ) {
+
+        const user =
+          await getUser(
+            message.from.id
+          );
+
+        const link =
+          referralLink(
+            user.telegram_id
+          );
+
+        await sendMessage(
+          chatId,
+
+`👥 INVITE A FRIEND
+
+Bring someone into the GUBI community.
+
+You earn +50 XP when a new member joins through your personal link:
+
+${link}
+
+Invited: ${user.referral_count || 0}`,
+
+          null
+        );
+      }
+
+      // =================================================
+      // /OFFICIAL
+      // =================================================
+
+      if (
+        command ===
+        "/official"
+      ) {
+
+        await sendMessage(
+          chatId,
+
+`❄️ OFFICIAL GUBI LINKS
+
+X:
+https://x.com/ItsGubi
+
+GUBI Hub:
+https://t.me/GubiCommunityBot/gubihub
+
+⚠️ There is no official GUBI token yet.`,
+
+          null
+        );
+      }
+
+      // =================================================
+      // /HELP
+      // =================================================
+
+      if (
+        command ===
+        "/help"
+      ) {
+
+        await sendMessage(
+          chatId,
+
+`❄️ GUBI BOT
+
+/start — Welcome
+/hub — Open GUBI Hub
+/profile — Your profile
+/missions — Missions
+/raids — Community raids
+/leaderboard — Rankings
+/invite — Invite friends
+/official — Official links`,
+
+          null
         );
       }
 
@@ -931,6 +1466,39 @@ GUBI eats the market. 🟢`,
 );
 
 // ======================================================
+// SEND HUB BUTTON
+// ======================================================
+
+async function sendHubButton(
+  chatId,
+  text =
+    "❄️ Enter the GUBI Community Hub:"
+) {
+
+  return sendMessage(
+    chatId,
+
+    text,
+
+    {
+      inline_keyboard: [
+        [
+          {
+            text:
+              "❄️ OPEN GUBI HUB",
+
+            web_app: {
+              url:
+                GUBI_HUB
+            }
+          }
+        ]
+      ]
+    }
+  );
+}
+
+// ======================================================
 // SEND TELEGRAM MESSAGE
 // ======================================================
 
@@ -939,6 +1507,21 @@ async function sendMessage(
   text,
   replyMarkup
 ) {
+
+  const body = {
+
+    chat_id:
+      chatId,
+
+    text
+  };
+
+  if (replyMarkup) {
+
+    body.reply_markup =
+      replyMarkup;
+  }
+
   const response =
     await fetch(
       `${TELEGRAM_API}/sendMessage`,
@@ -952,15 +1535,9 @@ async function sendMessage(
         },
 
         body:
-          JSON.stringify({
-            chat_id:
-              chatId,
-
-            text,
-
-            reply_markup:
-              replyMarkup
-          })
+          JSON.stringify(
+            body
+          )
       }
     );
 
@@ -968,6 +1545,7 @@ async function sendMessage(
     await response.json();
 
   if (!data.ok) {
+
     console.error(
       "Telegram send error:",
       data
