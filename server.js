@@ -44,7 +44,9 @@ if (!SUPABASE_SECRET_KEY) {
 }
 
 const BOT_ID =
-  Number(TOKEN.split(":")[0]);
+  Number(
+    TOKEN.split(":")[0]
+  );
 
 if (!BOT_ID) {
   throw new Error(
@@ -134,11 +136,7 @@ async function validateTelegramInitData(
 
   let validated = false;
 
-  // ----------------------------------------------------
-  // METHOD 1:
-  // Validate using bot token.
-  // ----------------------------------------------------
-
+  // Method 1
   try {
     validate(
       initData,
@@ -161,11 +159,7 @@ async function validateTelegramInitData(
     );
   }
 
-  // ----------------------------------------------------
-  // METHOD 2:
-  // Telegram public Ed25519 validation.
-  // ----------------------------------------------------
-
+  // Method 2
   if (!validated) {
     try {
       await validate3rd(
@@ -196,10 +190,6 @@ async function validateTelegramInitData(
       "Telegram validation failed"
     );
   }
-
-  // ----------------------------------------------------
-  // EXTRACT USER
-  // ----------------------------------------------------
 
   const params =
     new URLSearchParams(
@@ -243,7 +233,7 @@ async function validateTelegramInitData(
 }
 
 // ======================================================
-// SUPABASE REQUEST
+// SUPABASE
 // ======================================================
 
 async function supabaseRequest(
@@ -302,9 +292,7 @@ async function supabaseRequest(
       {
         status:
           response.status,
-
         path,
-
         data
       }
     );
@@ -513,10 +501,6 @@ app.post(
         );
       }
 
-      // -----------------------------------------------
-      // DATES
-      // -----------------------------------------------
-
       const now =
         new Date();
 
@@ -544,10 +528,7 @@ app.post(
             10
           );
 
-      // -----------------------------------------------
-      // ALREADY CLAIMED
-      // -----------------------------------------------
-
+      // Already claimed
       if (
         user.last_checkin ===
         today
@@ -567,10 +548,7 @@ app.post(
         });
       }
 
-      // -----------------------------------------------
-      // STREAK
-      // -----------------------------------------------
-
+      // Streak
       let newStreak =
         1;
 
@@ -585,22 +563,12 @@ app.post(
           ) + 1;
       }
 
-      // -----------------------------------------------
       // XP
-      // -----------------------------------------------
-
       const newXp =
         Number(
           user.xp ||
           0
         ) + 10;
-
-      // -----------------------------------------------
-      // SAVE
-      //
-      // The extra filter prevents two simultaneous
-      // claims from awarding XP twice.
-      // -----------------------------------------------
 
       const updatedRows =
         await supabaseRequest(
@@ -629,12 +597,10 @@ app.post(
           }
         );
 
-      // Someone already claimed
-      // between our SELECT and UPDATE.
       if (
         !updatedRows ||
         updatedRows.length ===
-          0
+        0
       ) {
         const latestUser =
           await getUser(
@@ -695,6 +661,119 @@ app.post(
           error:
             error?.message ||
             "Check-in failed"
+        });
+    }
+  }
+);
+
+// ======================================================
+// API: LEADERBOARD
+// ======================================================
+
+app.post(
+  "/api/leaderboard",
+  async (req, res) => {
+    try {
+      const {
+        initData
+      } = req.body;
+
+      const telegramData =
+        await validateTelegramInitData(
+          initData
+        );
+
+      await createOrUpdateUser(
+        telegramData.user
+      );
+
+      const users =
+        await supabaseRequest(
+          "users?select=telegram_id,username,first_name,photo_url,xp,streak,created_at&order=xp.desc,created_at.asc&limit=1000"
+        );
+
+      const normalized =
+        (users || []).map(
+          (user, index) => ({
+            rank:
+              index + 1,
+
+            telegram_id:
+              user.telegram_id,
+
+            username:
+              user.username,
+
+            first_name:
+              user.first_name,
+
+            photo_url:
+              user.photo_url,
+
+            xp:
+              Number(
+                user.xp || 0
+              ),
+
+            streak:
+              Number(
+                user.streak || 0
+              )
+          })
+        );
+
+      const leaderboard =
+        normalized.slice(
+          0,
+          50
+        );
+
+      const me =
+        normalized.find(
+          user =>
+            String(
+              user.telegram_id
+            ) ===
+            String(
+              telegramData.user.id
+            )
+        );
+
+      return res.json({
+        ok:
+          true,
+
+        leaderboard,
+
+        me:
+          me || {
+            rank:
+              null,
+
+            telegram_id:
+              telegramData.user.id,
+
+            xp:
+              0
+          }
+      });
+
+    } catch (error) {
+
+      console.error(
+        "/api/leaderboard error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          ok:
+            false,
+
+          error:
+            error?.message ||
+            "Leaderboard failed"
         });
     }
   }
@@ -771,10 +850,6 @@ app.post(
         message.text
           .split(" ")[0];
 
-      // -----------------------------------------------
-      // /START
-      // -----------------------------------------------
-
       if (
         command ===
         "/start"
@@ -808,10 +883,6 @@ GUBI eats the market. 🟢`,
           }
         );
       }
-
-      // -----------------------------------------------
-      // /HUB
-      // -----------------------------------------------
 
       if (
         command ===
