@@ -6,7 +6,7 @@ const app = express();
 app.use(express.json({ limit: "100kb" }));
 
 // ======================================================
-// ENVIRONMENT VARIABLES
+// ENVIRONMENT
 // ======================================================
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -79,7 +79,7 @@ app.get("/api/health", (req, res) => {
 });
 
 // ======================================================
-// TELEGRAM MINI APP VALIDATION
+// TELEGRAM VALIDATION
 // ======================================================
 
 function validateTelegramInitData(initData) {
@@ -89,7 +89,8 @@ function validateTelegramInitData(initData) {
     );
   }
 
-  // Validate Telegram signature
+  // Validates Telegram Mini App initData
+  // using the bot token.
   validate(initData, TOKEN);
 
   const params =
@@ -107,7 +108,7 @@ function validateTelegramInitData(initData) {
   const now =
     Math.floor(Date.now() / 1000);
 
-  // Session valid for 24 hours
+  // Session valid for 24 hours.
   if (
     now - authDate > 86400 ||
     authDate > now + 60
@@ -145,12 +146,13 @@ function validateTelegramInitData(initData) {
   return {
     user,
     startParam:
-      params.get("start_param") || null
+      params.get("start_param") ||
+      null
   };
 }
 
 // ======================================================
-// SUPABASE REST API
+// SUPABASE REST
 // ======================================================
 
 async function supabaseRequest(
@@ -162,13 +164,8 @@ async function supabaseRequest(
   } = {}
 ) {
   const headers = {
-    // IMPORTANT:
-    // New sb_secret_ keys go in apikey.
-    // Do NOT use them as Bearer JWTs.
     apikey: SUPABASE_SECRET_KEY,
-
-    "Content-Type":
-      "application/json"
+    "Content-Type": "application/json"
   };
 
   if (prefer) {
@@ -181,7 +178,6 @@ async function supabaseRequest(
       {
         method,
         headers,
-
         body:
           body !== null
             ? JSON.stringify(body)
@@ -205,12 +201,15 @@ async function supabaseRequest(
   if (!response.ok) {
     console.error(
       "SUPABASE ERROR:",
-      response.status,
-      data
+      {
+        status: response.status,
+        path,
+        data
+      }
     );
 
     throw new Error(
-      `Database error ${response.status}`
+      `Database error (${response.status})`
     );
   }
 
@@ -218,7 +217,7 @@ async function supabaseRequest(
 }
 
 // ======================================================
-// USERS
+// USER DATABASE
 // ======================================================
 
 async function createOrUpdateUser(
@@ -229,17 +228,20 @@ async function createOrUpdateUser(
       telegramUser.id,
 
     username:
-      telegramUser.username || null,
+      telegramUser.username ||
+      null,
 
     first_name:
       telegramUser.first_name ||
       "GUBI Member",
 
     last_name:
-      telegramUser.last_name || null,
+      telegramUser.last_name ||
+      null,
 
     photo_url:
-      telegramUser.photo_url || null,
+      telegramUser.photo_url ||
+      null,
 
     updated_at:
       new Date().toISOString()
@@ -273,7 +275,7 @@ async function getUser(
 }
 
 // ======================================================
-// USER LEVEL
+// LEVEL SYSTEM
 // ======================================================
 
 function formatUser(user) {
@@ -303,7 +305,7 @@ function formatUser(user) {
 }
 
 // ======================================================
-// GET CURRENT TELEGRAM USER
+// GET CURRENT USER
 // ======================================================
 
 app.post(
@@ -330,28 +332,26 @@ app.post(
 
       if (!user) {
         throw new Error(
-          "Could not create GUBI user"
+          "Could not create user"
         );
       }
 
       res.json({
         ok: true,
-
         user:
           formatUser(user)
       });
     } catch (error) {
       console.error(
-        "/api/me ERROR:",
+        "/api/me error:",
         error
       );
 
       res.status(401).json({
         ok: false,
-
         error:
           error?.message ||
-          "Telegram validation failed"
+          "User authentication failed"
       });
     }
   }
@@ -369,12 +369,12 @@ app.post(
         initData
       } = req.body;
 
+      // Verify user really came from Telegram.
       const telegramData =
         validateTelegramInitData(
           initData
         );
 
-      // Ensure user exists
       await createOrUpdateUser(
         telegramData.user
       );
@@ -402,7 +402,8 @@ app.post(
         new Date(now);
 
       yesterdayDate.setUTCDate(
-        yesterdayDate.getUTCDate() - 1
+        yesterdayDate.getUTCDate() -
+          1
       );
 
       const yesterday =
@@ -410,12 +411,10 @@ app.post(
           .toISOString()
           .slice(0, 10);
 
-      // --------------------------------------
-      // ALREADY CLAIMED TODAY
-      // --------------------------------------
-
+      // Already claimed today.
       if (
-        user.last_checkin === today
+        user.last_checkin ===
+        today
       ) {
         return res.json({
           ok: true,
@@ -430,10 +429,7 @@ app.post(
         });
       }
 
-      // --------------------------------------
-      // STREAK
-      // --------------------------------------
-
+      // Calculate streak.
       let newStreak = 1;
 
       if (
@@ -446,26 +442,20 @@ app.post(
           ) + 1;
       }
 
-      // --------------------------------------
-      // XP
-      // --------------------------------------
-
       const newXp =
         Number(
           user.xp || 0
         ) + 10;
 
-      // Conditional update:
-      // prevents double claim if two requests arrive.
+      // Save XP + streak.
       const updatedRows =
         await supabaseRequest(
-          `users?telegram_id=eq.${user.telegram_id}&or=(last_checkin.is.null,last_checkin.neq.${today})`,
+          `users?telegram_id=eq.${user.telegram_id}`,
           {
             method: "PATCH",
 
             body: {
-              xp:
-                newXp,
+              xp: newXp,
 
               streak:
                 newStreak,
@@ -483,36 +473,20 @@ app.post(
           }
         );
 
-      // Another request may have claimed it
       if (
         !updatedRows ||
         updatedRows.length === 0
       ) {
-        const latestUser =
-          await getUser(
-            user.telegram_id
-          );
-
-        return res.json({
-          ok: true,
-
-          already_claimed:
-            true,
-
-          reward: 0,
-
-          user:
-            formatUser(
-              latestUser
-            )
-        });
+        throw new Error(
+          "Could not save check-in"
+        );
       }
 
       user =
         updatedRows[0];
 
       console.log(
-        `CHECK-IN SUCCESS: ${user.telegram_id} +10 XP`
+        `✅ CHECK-IN: Telegram ${user.telegram_id} +10 XP`
       );
 
       res.json({
@@ -521,15 +495,14 @@ app.post(
         already_claimed:
           false,
 
-        reward:
-          10,
+        reward: 10,
 
         user:
           formatUser(user)
       });
     } catch (error) {
       console.error(
-        "/api/checkin ERROR:",
+        "/api/checkin error:",
         error
       );
 
@@ -539,6 +512,40 @@ app.post(
         error:
           error?.message ||
           "Check-in failed"
+      });
+    }
+  }
+);
+
+// ======================================================
+// TEST DATABASE
+// ======================================================
+
+app.get(
+  "/api/database-health",
+  async (req, res) => {
+    try {
+      await supabaseRequest(
+        "users?select=telegram_id&limit=1"
+      );
+
+      res.json({
+        ok: true,
+        database:
+          "Supabase connected"
+      });
+    } catch (error) {
+      console.error(
+        "Database health error:",
+        error
+      );
+
+      res.status(500).json({
+        ok: false,
+        database:
+          "Supabase connection failed",
+        error:
+          error.message
       });
     }
   }
@@ -570,10 +577,6 @@ app.post(
       const command =
         message.text
           .split(" ")[0];
-
-      // --------------------------------------
-      // /START
-      // --------------------------------------
 
       if (
         command === "/start"
@@ -607,10 +610,6 @@ GUBI eats the market. 🟢`,
         );
       }
 
-      // --------------------------------------
-      // /HUB
-      // --------------------------------------
-
       if (
         command === "/hub"
       ) {
@@ -637,18 +636,14 @@ GUBI eats the market. 🟢`,
         );
       }
 
-      res.sendStatus(
-        200
-      );
+      res.sendStatus(200);
     } catch (error) {
       console.error(
-        "WEBHOOK ERROR:",
+        "Webhook error:",
         error
       );
 
-      res.sendStatus(
-        200
-      );
+      res.sendStatus(200);
     }
   }
 );
@@ -666,8 +661,7 @@ async function sendMessage(
     await fetch(
       `${TELEGRAM_API}/sendMessage`,
       {
-        method:
-          "POST",
+        method: "POST",
 
         headers: {
           "Content-Type":
@@ -692,7 +686,7 @@ async function sendMessage(
 
   if (!data.ok) {
     console.error(
-      "TELEGRAM SEND ERROR:",
+      "Telegram send error:",
       data
     );
   }
@@ -711,10 +705,9 @@ app.listen(
   PORT,
   async () => {
     console.log(
-      `GUBI Bot running on port ${PORT}`
+      `❄️ GUBI Bot running on port ${PORT}`
     );
 
-    // Set webhook automatically
     try {
       const response =
         await fetch(
