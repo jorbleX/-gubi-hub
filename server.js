@@ -1,31 +1,59 @@
 import express from "express";
-import { validate } from "@tma.js/init-data-node";
+import {
+  validate,
+  validate3rd
+} from "@tma.js/init-data-node";
 
 const app = express();
 
-app.use(express.json({ limit: "100kb" }));
+app.use(
+  express.json({
+    limit: "100kb"
+  })
+);
 
 // ======================================================
 // ENVIRONMENT
 // ======================================================
 
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
+const TOKEN =
+  process.env.TELEGRAM_BOT_TOKEN?.trim();
+
+const SUPABASE_URL =
+  process.env.SUPABASE_URL?.trim();
+
+const SUPABASE_SECRET_KEY =
+  process.env.SUPABASE_SECRET_KEY?.trim();
 
 if (!TOKEN) {
-  throw new Error("Missing TELEGRAM_BOT_TOKEN");
+  throw new Error(
+    "Missing TELEGRAM_BOT_TOKEN"
+  );
 }
 
 if (!SUPABASE_URL) {
-  throw new Error("Missing SUPABASE_URL");
+  throw new Error(
+    "Missing SUPABASE_URL"
+  );
 }
 
 if (!SUPABASE_SECRET_KEY) {
-  throw new Error("Missing SUPABASE_SECRET_KEY");
+  throw new Error(
+    "Missing SUPABASE_SECRET_KEY"
+  );
 }
 
-const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
+const BOT_ID =
+  Number(TOKEN.split(":")[0]);
+
+if (!BOT_ID) {
+  throw new Error(
+    "Invalid Telegram bot token"
+  );
+}
+
+const TELEGRAM_API =
+  `https://api.telegram.org/bot${TOKEN}`;
 
 const GUBI_HUB =
   "https://jorblex.github.io/-gubi-hub/";
@@ -40,83 +68,143 @@ const ALLOWED_ORIGIN =
 // CORS
 // ======================================================
 
-app.use((req, res, next) => {
-  res.setHeader(
-    "Access-Control-Allow-Origin",
-    ALLOWED_ORIGIN
-  );
+app.use(
+  (req, res, next) => {
+    res.setHeader(
+      "Access-Control-Allow-Origin",
+      ALLOWED_ORIGIN
+    );
 
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET,POST,OPTIONS"
-  );
+    res.setHeader(
+      "Access-Control-Allow-Methods",
+      "GET,POST,OPTIONS"
+    );
 
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type"
-  );
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type"
+    );
 
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(204);
+    if (
+      req.method === "OPTIONS"
+    ) {
+      return res.sendStatus(204);
+    }
+
+    next();
   }
-
-  next();
-});
+);
 
 // ======================================================
 // HEALTH
 // ======================================================
 
-app.get("/", (req, res) => {
-  res.send("❄️ GUBI Bot is running!");
-});
+app.get(
+  "/",
+  (req, res) => {
+    res.send(
+      "❄️ GUBI Bot is running!"
+    );
+  }
+);
 
-app.get("/api/health", (req, res) => {
-  res.json({
-    ok: true,
-    service: "GUBI Community Hub"
-  });
-});
+app.get(
+  "/api/health",
+  (req, res) => {
+    res.json({
+      ok: true,
+      service:
+        "GUBI Community Hub"
+    });
+  }
+);
 
 // ======================================================
 // TELEGRAM VALIDATION
 // ======================================================
 
-function validateTelegramInitData(initData) {
+async function validateTelegramInitData(
+  initData
+) {
   if (!initData) {
     throw new Error(
       "Open GUBI Hub from Telegram."
     );
   }
 
-  // Validates Telegram Mini App initData
-  // using the bot token.
-  validate(initData, TOKEN);
+  let validated = false;
+
+  // ----------------------------------------------------
+  // METHOD 1:
+  // Validate using bot token.
+  // ----------------------------------------------------
+
+  try {
+    validate(
+      initData,
+      TOKEN,
+      {
+        expiresIn: 86400
+      }
+    );
+
+    validated = true;
+
+    console.log(
+      "✅ Telegram validation: bot token"
+    );
+  } catch (error) {
+    console.log(
+      "Bot-token validation failed:",
+      error?.name ||
+      error?.message
+    );
+  }
+
+  // ----------------------------------------------------
+  // METHOD 2:
+  // Telegram public Ed25519 validation.
+  // ----------------------------------------------------
+
+  if (!validated) {
+    try {
+      await validate3rd(
+        initData,
+        BOT_ID,
+        {
+          expiresIn: 86400,
+          test: false
+        }
+      );
+
+      validated = true;
+
+      console.log(
+        "✅ Telegram validation: public signature"
+      );
+    } catch (error) {
+      console.error(
+        "Third-party Telegram validation failed:",
+        error?.name ||
+        error?.message
+      );
+    }
+  }
+
+  if (!validated) {
+    throw new Error(
+      "Telegram validation failed"
+    );
+  }
+
+  // ----------------------------------------------------
+  // EXTRACT USER
+  // ----------------------------------------------------
 
   const params =
-    new URLSearchParams(initData);
-
-  const authDate =
-    Number(params.get("auth_date"));
-
-  if (!authDate) {
-    throw new Error(
-      "Missing Telegram auth date"
+    new URLSearchParams(
+      initData
     );
-  }
-
-  const now =
-    Math.floor(Date.now() / 1000);
-
-  // Session valid for 24 hours.
-  if (
-    now - authDate > 86400 ||
-    authDate > now + 60
-  ) {
-    throw new Error(
-      "Telegram session expired"
-    );
-  }
 
   const rawUser =
     params.get("user");
@@ -130,7 +218,8 @@ function validateTelegramInitData(initData) {
   let user;
 
   try {
-    user = JSON.parse(rawUser);
+    user =
+      JSON.parse(rawUser);
   } catch {
     throw new Error(
       "Invalid Telegram user data"
@@ -145,14 +234,16 @@ function validateTelegramInitData(initData) {
 
   return {
     user,
+
     startParam:
-      params.get("start_param") ||
-      null
+      params.get(
+        "start_param"
+      ) || null
   };
 }
 
 // ======================================================
-// SUPABASE REST
+// SUPABASE REQUEST
 // ======================================================
 
 async function supabaseRequest(
@@ -164,12 +255,16 @@ async function supabaseRequest(
   } = {}
 ) {
   const headers = {
-    apikey: SUPABASE_SECRET_KEY,
-    "Content-Type": "application/json"
+    apikey:
+      SUPABASE_SECRET_KEY,
+
+    "Content-Type":
+      "application/json"
   };
 
   if (prefer) {
-    headers.Prefer = prefer;
+    headers.Prefer =
+      prefer;
   }
 
   const response =
@@ -177,7 +272,9 @@ async function supabaseRequest(
       `${SUPABASE_URL}/rest/v1/${path}`,
       {
         method,
+
         headers,
+
         body:
           body !== null
             ? JSON.stringify(body)
@@ -185,16 +282,17 @@ async function supabaseRequest(
       }
     );
 
-  const text =
+  const raw =
     await response.text();
 
   let data = null;
 
-  if (text) {
+  if (raw) {
     try {
-      data = JSON.parse(text);
+      data =
+        JSON.parse(raw);
     } catch {
-      data = text;
+      data = raw;
     }
   }
 
@@ -202,8 +300,11 @@ async function supabaseRequest(
     console.error(
       "SUPABASE ERROR:",
       {
-        status: response.status,
+        status:
+          response.status,
+
         path,
+
         data
       }
     );
@@ -217,7 +318,7 @@ async function supabaseRequest(
 }
 
 // ======================================================
-// USER DATABASE
+// USERS
 // ======================================================
 
 async function createOrUpdateUser(
@@ -244,23 +345,29 @@ async function createOrUpdateUser(
       null,
 
     updated_at:
-      new Date().toISOString()
+      new Date()
+        .toISOString()
   };
 
   const data =
     await supabaseRequest(
       "users?on_conflict=telegram_id",
       {
-        method: "POST",
+        method:
+          "POST",
 
-        body: payload,
+        body:
+          payload,
 
         prefer:
           "resolution=merge-duplicates,return=representation"
       }
     );
 
-  return data?.[0] || null;
+  return (
+    data?.[0] ||
+    null
+  );
 }
 
 async function getUser(
@@ -271,23 +378,32 @@ async function getUser(
       `users?telegram_id=eq.${telegramId}&select=*`
     );
 
-  return data?.[0] || null;
+  return (
+    data?.[0] ||
+    null
+  );
 }
 
 // ======================================================
 // LEVEL SYSTEM
 // ======================================================
 
-function formatUser(user) {
+function formatUser(
+  user
+) {
   if (!user) {
     return null;
   }
 
   const xp =
-    Number(user.xp || 0);
+    Number(
+      user.xp || 0
+    );
 
   const level =
-    Math.floor(xp / 100) + 1;
+    Math.floor(
+      xp / 100
+    ) + 1;
 
   return {
     ...user,
@@ -305,7 +421,7 @@ function formatUser(user) {
 }
 
 // ======================================================
-// GET CURRENT USER
+// API: CURRENT USER
 // ======================================================
 
 app.post(
@@ -317,7 +433,7 @@ app.post(
       } = req.body;
 
       const telegramData =
-        validateTelegramInitData(
+        await validateTelegramInitData(
           initData
         );
 
@@ -336,29 +452,37 @@ app.post(
         );
       }
 
-      res.json({
+      return res.json({
         ok: true,
+
         user:
-          formatUser(user)
+          formatUser(
+            user
+          )
       });
+
     } catch (error) {
+
       console.error(
         "/api/me error:",
         error
       );
 
-      res.status(401).json({
-        ok: false,
-        error:
-          error?.message ||
-          "User authentication failed"
-      });
+      return res
+        .status(401)
+        .json({
+          ok: false,
+
+          error:
+            error?.message ||
+            "Authentication failed"
+        });
     }
   }
 );
 
 // ======================================================
-// DAILY CHECK-IN
+// API: DAILY CHECK-IN
 // ======================================================
 
 app.post(
@@ -369,9 +493,8 @@ app.post(
         initData
       } = req.body;
 
-      // Verify user really came from Telegram.
       const telegramData =
-        validateTelegramInitData(
+        await validateTelegramInitData(
           initData
         );
 
@@ -390,28 +513,41 @@ app.post(
         );
       }
 
+      // -----------------------------------------------
+      // DATES
+      // -----------------------------------------------
+
       const now =
         new Date();
 
       const today =
         now
           .toISOString()
-          .slice(0, 10);
+          .slice(
+            0,
+            10
+          );
 
       const yesterdayDate =
         new Date(now);
 
       yesterdayDate.setUTCDate(
         yesterdayDate.getUTCDate() -
-          1
+        1
       );
 
       const yesterday =
         yesterdayDate
           .toISOString()
-          .slice(0, 10);
+          .slice(
+            0,
+            10
+          );
 
-      // Already claimed today.
+      // -----------------------------------------------
+      // ALREADY CLAIMED
+      // -----------------------------------------------
+
       if (
         user.last_checkin ===
         today
@@ -425,12 +561,18 @@ app.post(
           reward: 0,
 
           user:
-            formatUser(user)
+            formatUser(
+              user
+            )
         });
       }
 
-      // Calculate streak.
-      let newStreak = 1;
+      // -----------------------------------------------
+      // STREAK
+      // -----------------------------------------------
+
+      let newStreak =
+        1;
 
       if (
         user.last_checkin ===
@@ -438,24 +580,38 @@ app.post(
       ) {
         newStreak =
           Number(
-            user.streak || 0
+            user.streak ||
+            0
           ) + 1;
       }
 
+      // -----------------------------------------------
+      // XP
+      // -----------------------------------------------
+
       const newXp =
         Number(
-          user.xp || 0
+          user.xp ||
+          0
         ) + 10;
 
-      // Save XP + streak.
+      // -----------------------------------------------
+      // SAVE
+      //
+      // The extra filter prevents two simultaneous
+      // claims from awarding XP twice.
+      // -----------------------------------------------
+
       const updatedRows =
         await supabaseRequest(
-          `users?telegram_id=eq.${user.telegram_id}`,
+          `users?telegram_id=eq.${user.telegram_id}&or=(last_checkin.is.null,last_checkin.neq.${today})`,
           {
-            method: "PATCH",
+            method:
+              "PATCH",
 
             body: {
-              xp: newXp,
+              xp:
+                newXp,
 
               streak:
                 newStreak,
@@ -473,52 +629,79 @@ app.post(
           }
         );
 
+      // Someone already claimed
+      // between our SELECT and UPDATE.
       if (
         !updatedRows ||
-        updatedRows.length === 0
+        updatedRows.length ===
+          0
       ) {
-        throw new Error(
-          "Could not save check-in"
-        );
+        const latestUser =
+          await getUser(
+            user.telegram_id
+          );
+
+        return res.json({
+          ok: true,
+
+          already_claimed:
+            true,
+
+          reward:
+            0,
+
+          user:
+            formatUser(
+              latestUser
+            )
+        });
       }
 
       user =
         updatedRows[0];
 
       console.log(
-        `✅ CHECK-IN: Telegram ${user.telegram_id} +10 XP`
+        `✅ GUBI CHECK-IN: ${user.telegram_id} +10 XP`
       );
 
-      res.json({
+      return res.json({
         ok: true,
 
         already_claimed:
           false,
 
-        reward: 10,
+        reward:
+          10,
 
         user:
-          formatUser(user)
+          formatUser(
+            user
+          )
       });
+
     } catch (error) {
+
       console.error(
         "/api/checkin error:",
         error
       );
 
-      res.status(500).json({
-        ok: false,
+      return res
+        .status(500)
+        .json({
+          ok:
+            false,
 
-        error:
-          error?.message ||
-          "Check-in failed"
-      });
+          error:
+            error?.message ||
+            "Check-in failed"
+        });
     }
   }
 );
 
 // ======================================================
-// TEST DATABASE
+// DATABASE HEALTH
 // ======================================================
 
 app.get(
@@ -529,36 +712,46 @@ app.get(
         "users?select=telegram_id&limit=1"
       );
 
-      res.json({
-        ok: true,
+      return res.json({
+        ok:
+          true,
+
         database:
           "Supabase connected"
       });
+
     } catch (error) {
+
       console.error(
-        "Database health error:",
+        "Database health:",
         error
       );
 
-      res.status(500).json({
-        ok: false,
-        database:
-          "Supabase connection failed",
-        error:
-          error.message
-      });
+      return res
+        .status(500)
+        .json({
+          ok:
+            false,
+
+          database:
+            "Supabase failed",
+
+          error:
+            error.message
+        });
     }
   }
 );
 
 // ======================================================
-// TELEGRAM BOT WEBHOOK
+// TELEGRAM WEBHOOK
 // ======================================================
 
 app.post(
   "/webhook",
   async (req, res) => {
     try {
+
       const message =
         req.body.message;
 
@@ -578,9 +771,15 @@ app.post(
         message.text
           .split(" ")[0];
 
+      // -----------------------------------------------
+      // /START
+      // -----------------------------------------------
+
       if (
-        command === "/start"
+        command ===
+        "/start"
       ) {
+
         await sendMessage(
           chatId,
 
@@ -610,9 +809,15 @@ GUBI eats the market. 🟢`,
         );
       }
 
+      // -----------------------------------------------
+      // /HUB
+      // -----------------------------------------------
+
       if (
-        command === "/hub"
+        command ===
+        "/hub"
       ) {
+
         await sendMessage(
           chatId,
 
@@ -636,14 +841,20 @@ GUBI eats the market. 🟢`,
         );
       }
 
-      res.sendStatus(200);
+      return res.sendStatus(
+        200
+      );
+
     } catch (error) {
+
       console.error(
-        "Webhook error:",
+        "Telegram webhook error:",
         error
       );
 
-      res.sendStatus(200);
+      return res.sendStatus(
+        200
+      );
     }
   }
 );
@@ -661,7 +872,8 @@ async function sendMessage(
     await fetch(
       `${TELEGRAM_API}/sendMessage`,
       {
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
           "Content-Type":
@@ -699,16 +911,23 @@ async function sendMessage(
 // ======================================================
 
 const PORT =
-  process.env.PORT || 3000;
+  process.env.PORT ||
+  3000;
 
 app.listen(
   PORT,
   async () => {
+
     console.log(
       `❄️ GUBI Bot running on port ${PORT}`
     );
 
+    console.log(
+      `Telegram Bot ID: ${BOT_ID}`
+    );
+
     try {
+
       const response =
         await fetch(
           `${TELEGRAM_API}/setWebhook?url=${encodeURIComponent(
@@ -723,7 +942,9 @@ app.listen(
         "Telegram webhook:",
         data
       );
+
     } catch (error) {
+
       console.error(
         "Webhook setup failed:",
         error
