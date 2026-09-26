@@ -136,16 +136,14 @@ async function validateTelegramInitData(
 ) {
 
   if (!initData) {
+
     throw new Error(
       "Open GUBI Hub from Telegram."
     );
   }
 
-  let validated = false;
-
-  // ----------------------------------------------
-  // METHOD 1
-  // ----------------------------------------------
+  let validated =
+    false;
 
   try {
 
@@ -153,11 +151,13 @@ async function validateTelegramInitData(
       initData,
       TOKEN,
       {
-        expiresIn: 86400
+        expiresIn:
+          86400
       }
     );
 
-    validated = true;
+    validated =
+      true;
 
     console.log(
       "✅ Telegram validation: bot token"
@@ -172,10 +172,6 @@ async function validateTelegramInitData(
     );
   }
 
-  // ----------------------------------------------
-  // METHOD 2
-  // ----------------------------------------------
-
   if (!validated) {
 
     try {
@@ -184,12 +180,16 @@ async function validateTelegramInitData(
         initData,
         BOT_ID,
         {
-          expiresIn: 86400,
-          test: false
+          expiresIn:
+            86400,
+
+          test:
+            false
         }
       );
 
-      validated = true;
+      validated =
+        true;
 
       console.log(
         "✅ Telegram validation: public signature"
@@ -198,7 +198,7 @@ async function validateTelegramInitData(
     } catch (error) {
 
       console.error(
-        "Third-party Telegram validation failed:",
+        "Third-party validation failed:",
         error?.name ||
         error?.message
       );
@@ -218,7 +218,9 @@ async function validateTelegramInitData(
     );
 
   const rawUser =
-    params.get("user");
+    params.get(
+      "user"
+    );
 
   if (!rawUser) {
 
@@ -293,6 +295,7 @@ async function supabaseRequest(
     await fetch(
       `${SUPABASE_URL}/rest/v1/${path}`,
       {
+
         method,
 
         headers,
@@ -309,7 +312,8 @@ async function supabaseRequest(
   const raw =
     await response.text();
 
-  let data = null;
+  let data =
+    null;
 
   if (raw) {
 
@@ -421,7 +425,7 @@ async function getUser(
 }
 
 // ======================================================
-// LEVELS
+// LEVEL SYSTEM
 // ======================================================
 
 function formatUser(
@@ -488,14 +492,11 @@ function extractReferralId(
     return null;
   }
 
-  const rawId =
-    startParam.substring(
-      4
-    );
-
   const inviterId =
     Number(
-      rawId
+      startParam.substring(
+        4
+      )
     );
 
   if (
@@ -524,9 +525,8 @@ async function processReferral(
   if (!inviterId) {
 
     return {
-      applied: false,
-      reason:
-        "no-referral"
+      applied:
+        false
     };
   }
 
@@ -535,25 +535,19 @@ async function processReferral(
       inviteeTelegramUser.id
     );
 
-  // ===============================================
-  // NO SELF REFERRALS
-  // ===============================================
-
   if (
     inviterId ===
     inviteeId
   ) {
 
     return {
-      applied: false,
+      applied:
+        false,
+
       reason:
         "self-referral"
     };
   }
-
-  // ===============================================
-  // MAKE SURE INVITEE EXISTS
-  // ===============================================
 
   await createOrUpdateUser(
     inviteeTelegramUser
@@ -564,33 +558,19 @@ async function processReferral(
       inviteeId
     );
 
-  if (!invitee) {
-
-    return {
-      applied: false,
-      reason:
-        "invitee-not-found"
-    };
-  }
-
-  // ===============================================
-  // ONE REFERRER PER ACCOUNT
-  // ===============================================
-
   if (
+    !invitee ||
     invitee.referred_by
   ) {
 
     return {
-      applied: false,
+      applied:
+        false,
+
       reason:
         "already-referred"
     };
   }
-
-  // ===============================================
-  // INVITER MUST EXIST
-  // ===============================================
 
   const inviter =
     await getUser(
@@ -600,17 +580,15 @@ async function processReferral(
   if (!inviter) {
 
     return {
-      applied: false,
+      applied:
+        false,
+
       reason:
         "inviter-not-found"
     };
   }
 
-  // ===============================================
-  // LOCK REFERRAL FIRST
-  // ===============================================
-
-  const referralLock =
+  const locked =
     await supabaseRequest(
       `users?telegram_id=eq.${inviteeId}&referred_by=is.null`,
       {
@@ -634,64 +612,53 @@ async function processReferral(
     );
 
   if (
-    !referralLock ||
-    referralLock.length ===
+    !locked ||
+    locked.length ===
       0
   ) {
 
     return {
-      applied: false,
+      applied:
+        false,
+
       reason:
         "already-referred"
     };
   }
 
-  // ===============================================
-  // REWARD INVITER
-  // ===============================================
+  await supabaseRequest(
+    `users?telegram_id=eq.${inviterId}`,
+    {
 
-  const inviterXp =
-    Number(
-      inviter.xp ||
-      0
-    );
+      method:
+        "PATCH",
 
-  const inviterReferrals =
-    Number(
-      inviter.referral_count ||
-      0
-    );
+      body: {
 
-  const updatedInviter =
-    await supabaseRequest(
-      `users?telegram_id=eq.${inviterId}`,
-      {
+        xp:
+          Number(
+            inviter.xp ||
+            0
+          ) + 50,
 
-        method:
-          "PATCH",
+        referral_count:
+          Number(
+            inviter.referral_count ||
+            0
+          ) + 1,
 
-        body: {
+        updated_at:
+          new Date()
+            .toISOString()
+      },
 
-          xp:
-            inviterXp +
-            50,
-
-          referral_count:
-            inviterReferrals +
-            1,
-
-          updated_at:
-            new Date()
-              .toISOString()
-        },
-
-        prefer:
-          "return=representation"
-      }
-    );
+      prefer:
+        "return=representation"
+    }
+  );
 
   console.log(
-    `✅ REFERRAL ${inviterId} -> ${inviteeId} | +50 XP`
+    `✅ REFERRAL ${inviterId} -> ${inviteeId} +50 XP`
   );
 
   return {
@@ -700,16 +667,82 @@ async function processReferral(
       true,
 
     reward:
-      50,
-
-    inviter:
-      updatedInviter?.[0] ||
-      null
+      50
   };
 }
 
 // ======================================================
-// API ME
+// MISSION HELPERS
+// ======================================================
+
+async function getActiveMissions() {
+
+  return await supabaseRequest(
+    "missions?is_active=eq.true&select=*&order=sort_order.asc"
+  );
+}
+
+async function getMission(
+  missionId
+) {
+
+  const data =
+    await supabaseRequest(
+      `missions?id=eq.${encodeURIComponent(
+        missionId
+      )}&is_active=eq.true&select=*`
+    );
+
+  return (
+    data?.[0] ||
+    null
+  );
+}
+
+async function getUserMissions(
+  telegramId
+) {
+
+  return await supabaseRequest(
+    `user_missions?telegram_id=eq.${telegramId}&select=*`
+  );
+}
+
+async function ensureMissionProgress(
+  telegramId,
+  missionId
+) {
+
+  await supabaseRequest(
+    "user_missions?on_conflict=telegram_id,mission_id",
+    {
+
+      method:
+        "POST",
+
+      body: {
+
+        telegram_id:
+          telegramId,
+
+        mission_id:
+          missionId,
+
+        completed:
+          false,
+
+        claimed:
+          false
+      },
+
+      prefer:
+        "resolution=ignore-duplicates"
+    }
+  );
+}
+
+// ======================================================
+// API: ME
 // ======================================================
 
 app.post(
@@ -732,9 +765,6 @@ app.post(
         telegramData.user
       );
 
-      // Backup:
-      // if Mini App itself has start_param
-      // process referral here too.
       if (
         telegramData.startParam
       ) {
@@ -759,7 +789,8 @@ app.post(
 
       return res.json({
 
-        ok: true,
+        ok:
+          true,
 
         user:
           formatUser(
@@ -778,7 +809,8 @@ app.post(
         .status(401)
         .json({
 
-          ok: false,
+          ok:
+            false,
 
           error:
             error?.message ||
@@ -789,7 +821,7 @@ app.post(
 );
 
 // ======================================================
-// API CHECK-IN
+// API: CHECK-IN
 // ======================================================
 
 app.post(
@@ -853,8 +885,6 @@ app.post(
             10
           );
 
-      // Already claimed
-
       if (
         user.last_checkin ===
         today
@@ -899,7 +929,7 @@ app.post(
           0
         ) + 10;
 
-      const updatedRows =
+      const updated =
         await supabaseRequest(
           `users?telegram_id=eq.${user.telegram_id}&or=(last_checkin.is.null,last_checkin.neq.${today})`,
           {
@@ -929,12 +959,12 @@ app.post(
         );
 
       if (
-        !updatedRows ||
-        updatedRows.length ===
+        !updated ||
+        updated.length ===
           0
       ) {
 
-        const latestUser =
+        const latest =
           await getUser(
             user.telegram_id
           );
@@ -952,13 +982,13 @@ app.post(
 
           user:
             formatUser(
-              latestUser
+              latest
             )
         });
       }
 
       user =
-        updatedRows[0];
+        updated[0];
 
       console.log(
         `✅ CHECK-IN ${user.telegram_id} +10 XP`
@@ -1004,7 +1034,410 @@ app.post(
 );
 
 // ======================================================
-// API LEADERBOARD
+// API: MISSIONS
+// ======================================================
+
+app.post(
+  "/api/missions",
+  async (req, res) => {
+
+    try {
+
+      const {
+        initData
+      } =
+        req.body;
+
+      const telegramData =
+        await validateTelegramInitData(
+          initData
+        );
+
+      await createOrUpdateUser(
+        telegramData.user
+      );
+
+      const user =
+        await getUser(
+          telegramData.user.id
+        );
+
+      if (!user) {
+
+        throw new Error(
+          "User not found"
+        );
+      }
+
+      const missions =
+        await getActiveMissions();
+
+      const progress =
+        await getUserMissions(
+          user.telegram_id
+        );
+
+      const progressMap =
+        new Map(
+          (progress || []).map(
+            item => [
+              item.mission_id,
+              item
+            ]
+          )
+        );
+
+      const today =
+        new Date()
+          .toISOString()
+          .slice(
+            0,
+            10
+          );
+
+      const formattedMissions =
+        (missions || []).map(
+          mission => {
+
+            const userMission =
+              progressMap.get(
+                mission.id
+              );
+
+            let status =
+              "available";
+
+            let claimed =
+              Boolean(
+                userMission?.claimed
+              );
+
+            if (
+              mission.id ===
+              "daily_checkin"
+            ) {
+
+              claimed =
+                user.last_checkin ===
+                today;
+
+              status =
+                claimed
+                  ? "completed"
+                  : "available";
+
+            } else if (
+              mission.id ===
+              "invite_friend"
+            ) {
+
+              status =
+                "automatic";
+
+            } else if (
+              claimed
+            ) {
+
+              status =
+                "completed";
+            }
+
+            return {
+
+              id:
+                mission.id,
+
+              title:
+                mission.title,
+
+              description:
+                mission.description,
+
+              xp_reward:
+                Number(
+                  mission.xp_reward ||
+                  0
+                ),
+
+              mission_type:
+                mission.mission_type,
+
+              action_url:
+                mission.action_url,
+
+              status,
+
+              claimed
+            };
+          }
+        );
+
+      return res.json({
+
+        ok:
+          true,
+
+        missions:
+          formattedMissions,
+
+        user:
+          formatUser(
+            user
+          )
+      });
+
+    } catch (error) {
+
+      console.error(
+        "/api/missions:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+
+          ok:
+            false,
+
+          error:
+            error?.message ||
+            "Missions failed"
+        });
+    }
+  }
+);
+
+// ======================================================
+// API: CLAIM MISSION
+// ======================================================
+
+app.post(
+  "/api/claim-mission",
+  async (req, res) => {
+
+    try {
+
+      const {
+        initData,
+        missionId
+      } =
+        req.body;
+
+      const telegramData =
+        await validateTelegramInitData(
+          initData
+        );
+
+      if (!missionId) {
+
+        throw new Error(
+          "Mission ID required"
+        );
+      }
+
+      await createOrUpdateUser(
+        telegramData.user
+      );
+
+      let user =
+        await getUser(
+          telegramData.user.id
+        );
+
+      if (!user) {
+
+        throw new Error(
+          "User not found"
+        );
+      }
+
+      const mission =
+        await getMission(
+          missionId
+        );
+
+      if (!mission) {
+
+        throw new Error(
+          "Mission not found"
+        );
+      }
+
+      // These are rewarded elsewhere.
+      if (
+        mission.id ===
+          "daily_checkin" ||
+        mission.id ===
+          "invite_friend"
+      ) {
+
+        throw new Error(
+          "This mission is rewarded automatically."
+        );
+      }
+
+      await ensureMissionProgress(
+        user.telegram_id,
+        mission.id
+      );
+
+      const now =
+        new Date()
+          .toISOString();
+
+      // Only one request can change
+      // claimed=false -> claimed=true.
+      const claimedRows =
+        await supabaseRequest(
+          `user_missions?telegram_id=eq.${user.telegram_id}&mission_id=eq.${encodeURIComponent(
+            mission.id
+          )}&claimed=eq.false`,
+          {
+
+            method:
+              "PATCH",
+
+            body: {
+
+              completed:
+                true,
+
+              claimed:
+                true,
+
+              completed_at:
+                now,
+
+              claimed_at:
+                now
+            },
+
+            prefer:
+              "return=representation"
+          }
+        );
+
+      // Already claimed.
+      if (
+        !claimedRows ||
+        claimedRows.length ===
+          0
+      ) {
+
+        user =
+          await getUser(
+            user.telegram_id
+          );
+
+        return res.json({
+
+          ok:
+            true,
+
+          already_claimed:
+            true,
+
+          reward:
+            0,
+
+          mission_id:
+            mission.id,
+
+          user:
+            formatUser(
+              user
+            )
+        });
+      }
+
+      const reward =
+        Number(
+          mission.xp_reward ||
+          0
+        );
+
+      const newXp =
+        Number(
+          user.xp ||
+          0
+        ) + reward;
+
+      const updatedUserRows =
+        await supabaseRequest(
+          `users?telegram_id=eq.${user.telegram_id}`,
+          {
+
+            method:
+              "PATCH",
+
+            body: {
+
+              xp:
+                newXp,
+
+              updated_at:
+                now
+            },
+
+            prefer:
+              "return=representation"
+          }
+        );
+
+      user =
+        updatedUserRows?.[0] ||
+        await getUser(
+          user.telegram_id
+        );
+
+      console.log(
+        `✅ MISSION ${mission.id}: ${user.telegram_id} +${reward} XP`
+      );
+
+      return res.json({
+
+        ok:
+          true,
+
+        already_claimed:
+          false,
+
+        mission_id:
+          mission.id,
+
+        reward,
+
+        user:
+          formatUser(
+            user
+          )
+      });
+
+    } catch (error) {
+
+      console.error(
+        "/api/claim-mission:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+
+          ok:
+            false,
+
+          error:
+            error?.message ||
+            "Mission claim failed"
+        });
+    }
+  }
+);
+
+// ======================================================
+// API: LEADERBOARD
 // ======================================================
 
 app.post(
@@ -1077,9 +1510,9 @@ app.post(
 
       const me =
         rankings.find(
-          user =>
+          item =>
             String(
-              user.telegram_id
+              item.telegram_id
             ) ===
             String(
               telegramData.user.id
@@ -1120,7 +1553,7 @@ app.post(
 );
 
 // ======================================================
-// API REFERRAL
+// API: REFERRAL
 // ======================================================
 
 app.post(
@@ -1155,11 +1588,6 @@ app.post(
         );
       }
 
-      const link =
-        createReferralLink(
-          user.telegram_id
-        );
-
       return res.json({
 
         ok:
@@ -1167,7 +1595,10 @@ app.post(
 
         referral: {
 
-          link,
+          link:
+            createReferralLink(
+              user.telegram_id
+            ),
 
           count:
             Number(
@@ -1176,13 +1607,7 @@ app.post(
             ),
 
           reward:
-            50,
-
-          total_referral_xp:
-            Number(
-              user.referral_count ||
-              0
-            ) * 50
+            50
         }
       });
 
@@ -1240,9 +1665,6 @@ app.get(
           ok:
             false,
 
-          database:
-            "Supabase failed",
-
           error:
             error.message
         });
@@ -1294,10 +1716,6 @@ app.post(
         parts[1] ||
         null;
 
-      // ----------------------------------------------
-      // CREATE USER
-      // ----------------------------------------------
-
       if (sender) {
 
         await createOrUpdateUser(
@@ -1305,10 +1723,7 @@ app.post(
         );
       }
 
-      // ==============================================
-      // /START
-      // ==============================================
-
+      // START
       if (
         command ===
         "/start"
@@ -1329,7 +1744,7 @@ app.post(
             );
         }
 
-        let messageText =
+        let welcome =
 `❄️ Welcome to GUBI
 
 Welcome to the snow.
@@ -1342,20 +1757,17 @@ GUBI eats the market. 🟢`;
           referral?.applied
         ) {
 
-          messageText +=
+          welcome +=
 `\n\n👥 Referral registered successfully.`;
         }
 
         await sendHubButton(
           chatId,
-          messageText
+          welcome
         );
       }
 
-      // ==============================================
-      // /HUB
-      // ==============================================
-
+      // HUB
       else if (
         command ===
         "/hub"
@@ -1367,23 +1779,17 @@ GUBI eats the market. 🟢`;
         );
       }
 
-      // ==============================================
-      // /PROFILE
-      // ==============================================
-
+      // PROFILE
       else if (
         command ===
         "/profile"
       ) {
 
         const user =
-          await getUser(
-            sender.id
-          );
-
-        const formatted =
           formatUser(
-            user
+            await getUser(
+              sender.id
+            )
           );
 
         await sendMessage(
@@ -1391,10 +1797,10 @@ GUBI eats the market. 🟢`;
 
 `👤 GUBI PROFILE
 
-❄️ Level ${formatted?.level || 1}
-⚡ ${formatted?.xp || 0} XP
-🔥 ${formatted?.streak || 0} day streak
-👥 ${formatted?.referral_count || 0} friends invited`,
+❄️ Level ${user?.level || 1}
+⚡ ${user?.xp || 0} XP
+🔥 ${user?.streak || 0} day streak
+👥 ${user?.referral_count || 0} friends invited`,
 
           {
             inline_keyboard: [
@@ -1414,10 +1820,7 @@ GUBI eats the market. 🟢`;
         );
       }
 
-      // ==============================================
-      // /MISSIONS
-      // ==============================================
-
+      // MISSIONS
       else if (
         command ===
         "/missions"
@@ -1425,14 +1828,11 @@ GUBI eats the market. 🟢`;
 
         await sendHubButton(
           chatId,
-          "⚡ Open GUBI Hub to view active missions."
+          "⚡ Open GUBI Hub to complete missions and earn XP."
         );
       }
 
-      // ==============================================
-      // /RAIDS
-      // ==============================================
-
+      // RAIDS
       else if (
         command ===
         "/raids"
@@ -1440,14 +1840,11 @@ GUBI eats the market. 🟢`;
 
         await sendHubButton(
           chatId,
-          "📣 Open GUBI Hub to view active raids."
+          "📣 Open GUBI Hub to see active raids."
         );
       }
 
-      // ==============================================
-      // /LEADERBOARD
-      // ==============================================
-
+      // LEADERBOARD
       else if (
         command ===
         "/leaderboard"
@@ -1455,14 +1852,11 @@ GUBI eats the market. 🟢`;
 
         await sendHubButton(
           chatId,
-          "🏆 Open GUBI Hub to view the leaderboard."
+          "🏆 Open GUBI Hub to see the leaderboard."
         );
       }
 
-      // ==============================================
-      // /INVITE
-      // ==============================================
-
+      // INVITE
       else if (
         command ===
         "/invite"
@@ -1472,13 +1866,6 @@ GUBI eats the market. 🟢`;
           await getUser(
             sender.id
           );
-
-        if (!user) {
-
-          throw new Error(
-            "User not found"
-          );
-        }
 
         const link =
           createReferralLink(
@@ -1494,7 +1881,6 @@ Invite someone into GUBI.
 
 You earn +50 XP when a new member joins through your personal link.
 
-Your link:
 ${link}
 
 Friends invited: ${user.referral_count || 0}`,
@@ -1503,10 +1889,7 @@ Friends invited: ${user.referral_count || 0}`,
         );
       }
 
-      // ==============================================
-      // /OFFICIAL
-      // ==============================================
-
+      // OFFICIAL
       else if (
         command ===
         "/official"
@@ -1529,10 +1912,7 @@ https://t.me/GubiCommunityBot/gubihub
         );
       }
 
-      // ==============================================
-      // /HELP
-      // ==============================================
-
+      // HELP
       else if (
         command ===
         "/help"
@@ -1545,9 +1925,9 @@ https://t.me/GubiCommunityBot/gubihub
 
 /start - Welcome
 /hub - Open GUBI Hub
-/profile - View profile
-/missions - View missions
-/raids - Active raids
+/profile - Profile
+/missions - Missions
+/raids - Raids
 /leaderboard - Rankings
 /invite - Invite friends
 /official - Official links`,
@@ -1563,7 +1943,7 @@ https://t.me/GubiCommunityBot/gubihub
     } catch (error) {
 
       console.error(
-        "Webhook error:",
+        "Webhook:",
         error
       );
 
@@ -1575,7 +1955,7 @@ https://t.me/GubiCommunityBot/gubihub
 );
 
 // ======================================================
-// SEND HUB BUTTON
+// SEND HUB
 // ======================================================
 
 async function sendHubButton(
@@ -1677,10 +2057,6 @@ app.listen(
 
     console.log(
       `❄️ GUBI Bot running on port ${PORT}`
-    );
-
-    console.log(
-      `Telegram Bot ID: ${BOT_ID}`
     );
 
     try {
