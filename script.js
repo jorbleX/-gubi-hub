@@ -9,6 +9,9 @@ let leaderboard = [];
 let myRank = null;
 let leaderboardLoaded = false;
 
+let referralData = null;
+let referralLoaded = false;
+
 // ======================================================
 // TELEGRAM
 // ======================================================
@@ -37,17 +40,6 @@ function todayUTC() {
     .slice(0, 10);
 }
 
-function openLink(url) {
-  if (tg?.openLink) {
-    tg.openLink(url);
-  } else {
-    window.open(
-      url,
-      "_blank"
-    );
-  }
-}
-
 function displayName(user) {
   if (!user) {
     return "GUBI Member";
@@ -61,6 +53,70 @@ function displayName(user) {
     user.first_name ||
     "GUBI Member"
   );
+}
+
+function openLink(url) {
+  if (tg?.openLink) {
+    tg.openLink(url);
+  } else {
+    window.open(
+      url,
+      "_blank"
+    );
+  }
+}
+
+function showMessage(message) {
+  if (tg?.showAlert) {
+    tg.showAlert(message);
+  } else {
+    alert(message);
+  }
+}
+
+// ======================================================
+// COPY TEXT
+// ======================================================
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(
+      text
+    );
+
+    tg?.HapticFeedback
+      ?.notificationOccurred(
+        "success"
+      );
+
+    showMessage(
+      "Referral link copied. ❄️"
+    );
+  } catch {
+    const textarea =
+      document.createElement(
+        "textarea"
+      );
+
+    textarea.value =
+      text;
+
+    document.body.appendChild(
+      textarea
+    );
+
+    textarea.select();
+
+    document.execCommand(
+      "copy"
+    );
+
+    textarea.remove();
+
+    showMessage(
+      "Referral link copied. ❄️"
+    );
+  }
 }
 
 // ======================================================
@@ -334,7 +390,9 @@ function homePage() {
 
     <div
       class="notice"
-      style="margin-top:16px"
+      style="
+        margin-top:16px
+      "
     >
       ❄️ GUBI eats the market.
     </div>
@@ -421,6 +479,15 @@ function missionsPage() {
     <div class="mission">
       <span>
         Invite a friend
+
+        <small
+          style="
+            display:block;
+            opacity:.65
+          "
+        >
+          Earn +50 XP per new member
+        </small>
       </span>
 
       <b class="xp">
@@ -428,15 +495,16 @@ function missionsPage() {
       </b>
     </div>
 
-    <p
+    <button
+      id="missionInviteBtn"
+      class="primary"
       style="
-        opacity:.6;
-        font-size:13px;
-        margin-top:16px
+        width:100%;
+        margin-top:10px
       "
     >
-      More missions coming soon.
-    </p>
+      👥 INVITE FRIEND
+    </button>
   `;
 }
 
@@ -669,6 +737,11 @@ function profilePage() {
     myRank?.rank ||
     "—";
 
+  const referralCount =
+    referralData?.count ??
+    currentUser.referral_count ??
+    0;
+
   return `
     <h2>👤 Profile</h2>
 
@@ -716,19 +789,6 @@ function profilePage() {
 
     <div class="mission">
       <span>
-        👥 Friends invited
-      </span>
-
-      <b>
-        ${
-          currentUser.referral_count ||
-          0
-        }
-      </b>
-    </div>
-
-    <div class="mission">
-      <span>
         🏆 Rank
       </span>
 
@@ -740,17 +800,96 @@ function profilePage() {
         }
       </b>
     </div>
+
+    <div style="height:14px"></div>
+
+    <h2>👥 Invite Friends</h2>
+
+    <div class="mission">
+      <span>
+        Friends invited
+
+        <small
+          style="
+            display:block;
+            opacity:.65;
+            margin-top:4px
+          "
+        >
+          +50 XP for every new member
+        </small>
+      </span>
+
+      <b>
+        ${referralCount}
+      </b>
+    </div>
+
+    ${
+      referralLoaded &&
+      referralData?.link
+        ? `
+          <button
+            id="shareReferralBtn"
+            class="primary"
+            style="
+              width:100%;
+              margin-top:12px
+            "
+          >
+            👥 INVITE FRIEND
+          </button>
+
+          <button
+            id="copyReferralBtn"
+            style="
+              width:100%;
+              margin-top:8px;
+              padding:12px;
+              border-radius:12px;
+              border:1px solid #d7e7f8;
+              background:white;
+              font-weight:700;
+            "
+          >
+            COPY LINK
+          </button>
+        `
+        : `
+          <button
+            id="loadReferralBtn"
+            class="primary"
+            style="
+              width:100%;
+              margin-top:12px
+            "
+          >
+            LOAD INVITE LINK
+          </button>
+        `
+    }
+
+    <div
+      class="notice"
+      style="
+        margin-top:16px
+      "
+    >
+      Each Telegram account can only
+      count as one referral.
+    </div>
   `;
 }
 
 // ======================================================
-// RENDER PAGE
+// RENDER
 // ======================================================
 
 function renderPage(
   page = activePage
 ) {
-  activePage = page;
+  activePage =
+    page;
 
   const screen =
     document.querySelector(
@@ -819,7 +958,7 @@ async function claimCheckin(
     if (
       data.already_claimed
     ) {
-      tg?.showAlert?.(
+      showMessage(
         "You already claimed today's XP. ❄️"
       );
     } else {
@@ -828,7 +967,7 @@ async function claimCheckin(
           "success"
         );
 
-      tg?.showAlert?.(
+      showMessage(
         `+${data.reward} XP! 🔥\nStreak: ${currentUser.streak} day(s)`
       );
     }
@@ -849,20 +988,14 @@ async function claimCheckin(
     button.textContent =
       "CLAIM +10 XP";
 
-    if (tg?.showAlert) {
-      tg.showAlert(
-        error.message
-      );
-    } else {
-      alert(
-        error.message
-      );
-    }
+    showMessage(
+      error.message
+    );
   }
 }
 
 // ======================================================
-// LOAD LEADERBOARD
+// LEADERBOARD LOAD
 // ======================================================
 
 async function loadLeaderboard(
@@ -882,7 +1015,7 @@ async function loadLeaderboard(
 
   if (
     activePage ===
-      "leaders" &&
+    "leaders" &&
     screen
   ) {
     screen.innerHTML =
@@ -976,6 +1109,108 @@ async function loadLeaderboard(
 }
 
 // ======================================================
+// REFERRAL LOAD
+// ======================================================
+
+async function loadReferral(
+  force = false
+) {
+  if (
+    referralLoaded &&
+    !force
+  ) {
+    return;
+  }
+
+  try {
+    const data =
+      await apiRequest(
+        "/api/referral"
+      );
+
+    referralData =
+      data.referral;
+
+    referralLoaded =
+      true;
+
+    if (
+      currentUser &&
+      referralData
+    ) {
+      currentUser.referral_count =
+        referralData.count;
+    }
+
+    if (
+      activePage ===
+      "profile"
+    ) {
+      renderPage(
+        "profile"
+      );
+    }
+
+  } catch (error) {
+
+    console.error(
+      "Referral:",
+      error
+    );
+
+    showMessage(
+      error.message
+    );
+  }
+}
+
+// ======================================================
+// SHARE REFERRAL
+// ======================================================
+
+async function shareReferral() {
+  if (
+    !referralData?.link
+  ) {
+    await loadReferral(
+      true
+    );
+  }
+
+  const link =
+    referralData?.link;
+
+  if (!link) {
+    return;
+  }
+
+  const text =
+    "Join me in the GUBI Community Hub. ❄️👀";
+
+  const shareUrl =
+    "https://t.me/share/url" +
+    `?url=${encodeURIComponent(
+      link
+    )}` +
+    `&text=${encodeURIComponent(
+      text
+    )}`;
+
+  if (
+    tg?.openTelegramLink
+  ) {
+    tg.openTelegramLink(
+      shareUrl
+    );
+  } else {
+    window.open(
+      shareUrl,
+      "_blank"
+    );
+  }
+}
+
+// ======================================================
 // PAGE ACTIONS
 // ======================================================
 
@@ -1046,6 +1281,57 @@ function bindPageActions() {
         );
       }
     );
+
+  document
+    .querySelector(
+      "#loadReferralBtn"
+    )
+    ?.addEventListener(
+      "click",
+      () =>
+        loadReferral(
+          true
+        )
+    );
+
+  document
+    .querySelector(
+      "#shareReferralBtn"
+    )
+    ?.addEventListener(
+      "click",
+      shareReferral
+    );
+
+  document
+    .querySelector(
+      "#copyReferralBtn"
+    )
+    ?.addEventListener(
+      "click",
+      () => {
+        if (
+          referralData?.link
+        ) {
+          copyText(
+            referralData.link
+          );
+        }
+      }
+    );
+
+  document
+    .querySelector(
+      "#missionInviteBtn"
+    )
+    ?.addEventListener(
+      "click",
+      async () => {
+        await loadReferral();
+
+        await shareReferral();
+      }
+    );
 }
 
 // ======================================================
@@ -1061,6 +1347,7 @@ document
       button.addEventListener(
         "click",
         async () => {
+
           document
             .querySelectorAll(
               "nav button"
@@ -1093,6 +1380,13 @@ document
             "leaders"
           ) {
             await loadLeaderboard();
+          }
+
+          if (
+            page ===
+            "profile"
+          ) {
+            await loadReferral();
           }
         }
       );
@@ -1145,9 +1439,10 @@ async function initializeGubi() {
       "home"
     );
 
-    // Load rank quietly
-    // after home opens.
+    // Load these quietly
+    // in the background.
     loadLeaderboard();
+    loadReferral();
 
   } catch (error) {
 
