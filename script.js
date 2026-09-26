@@ -1,6 +1,7 @@
 const tg = window.Telegram?.WebApp;
 
 const API_URL = "https://gubi-hub.onrender.com";
+const BOT_USERNAME = "GubiCommunityBot";
 
 let currentUser = null;
 let activePage = "home";
@@ -8,9 +9,6 @@ let activePage = "home";
 let leaderboard = [];
 let myRank = null;
 let leaderboardLoaded = false;
-
-let referralData = null;
-let referralLoaded = false;
 
 // ======================================================
 // TELEGRAM
@@ -49,21 +47,7 @@ function displayName(user) {
     return `@${user.username}`;
   }
 
-  return (
-    user.first_name ||
-    "GUBI Member"
-  );
-}
-
-function openLink(url) {
-  if (tg?.openLink) {
-    tg.openLink(url);
-  } else {
-    window.open(
-      url,
-      "_blank"
-    );
-  }
+  return user.first_name || "GUBI Member";
 }
 
 function showMessage(message) {
@@ -74,15 +58,91 @@ function showMessage(message) {
   }
 }
 
+function openLink(url) {
+  if (tg?.openLink) {
+    tg.openLink(url);
+  } else {
+    window.open(url, "_blank");
+  }
+}
+
 // ======================================================
-// COPY TEXT
+// API
 // ======================================================
 
-async function copyText(text) {
-  try {
-    await navigator.clipboard.writeText(
-      text
+async function apiRequest(path, options = {}) {
+  if (!tg?.initData) {
+    throw new Error(
+      "Open GUBI Hub from Telegram."
     );
+  }
+
+  const response = await fetch(
+    `${API_URL}${path}`,
+    {
+      method: options.method || "POST",
+
+      headers: {
+        "Content-Type": "application/json"
+      },
+
+      body: JSON.stringify({
+        initData: tg.initData,
+        ...(options.body || {})
+      })
+    }
+  );
+
+  let data;
+
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error(
+      "Invalid server response"
+    );
+  }
+
+  if (!response.ok || !data.ok) {
+    throw new Error(
+      data.error ||
+      "Something went wrong"
+    );
+  }
+
+  return data;
+}
+
+// ======================================================
+// REFERRAL LINK
+// ======================================================
+
+function getReferralLink() {
+  if (!currentUser?.telegram_id) {
+    return null;
+  }
+
+  return (
+    `https://t.me/${BOT_USERNAME}` +
+    `?start=ref_${currentUser.telegram_id}`
+  );
+}
+
+async function copyReferralLink() {
+  const link =
+    getReferralLink();
+
+  if (!link) {
+    showMessage(
+      "Referral link unavailable."
+    );
+
+    return;
+  }
+
+  try {
+    await navigator.clipboard
+      .writeText(link);
 
     tg?.HapticFeedback
       ?.notificationOccurred(
@@ -90,20 +150,20 @@ async function copyText(text) {
       );
 
     showMessage(
-      "Referral link copied. ❄️"
+      "Invite link copied. ❄️"
     );
+
   } catch {
+
     const textarea =
       document.createElement(
         "textarea"
       );
 
-    textarea.value =
-      text;
+    textarea.value = link;
 
-    document.body.appendChild(
-      textarea
-    );
+    document.body
+      .appendChild(textarea);
 
     textarea.select();
 
@@ -114,71 +174,41 @@ async function copyText(text) {
     textarea.remove();
 
     showMessage(
-      "Referral link copied. ❄️"
+      "Invite link copied. ❄️"
     );
   }
 }
 
-// ======================================================
-// API
-// ======================================================
+function shareReferral() {
+  const link =
+    getReferralLink();
 
-async function apiRequest(
-  path,
-  options = {}
-) {
-  if (!tg?.initData) {
-    throw new Error(
-      "Open GUBI Hub from Telegram."
+  if (!link) {
+    showMessage(
+      "Referral link unavailable."
     );
+
+    return;
   }
 
-  const response =
-    await fetch(
-      `${API_URL}${path}`,
-      {
-        method:
-          options.method ||
-          "POST",
+  const message =
+    "Join me in the GUBI Community Hub. ❄️👀";
 
-        headers: {
-          "Content-Type":
-            "application/json"
-        },
+  const shareUrl =
+    "https://t.me/share/url" +
+    `?url=${encodeURIComponent(link)}` +
+    `&text=${encodeURIComponent(message)}`;
 
-        body:
-          JSON.stringify({
-            initData:
-              tg.initData,
-
-            ...(options.body ||
-              {})
-          })
-      }
+  if (tg?.openTelegramLink) {
+    tg.openTelegramLink(
+      shareUrl
     );
-
-  let data;
-
-  try {
-    data =
-      await response.json();
-  } catch {
-    throw new Error(
-      "Invalid server response"
+  } else {
+    window.open(
+      shareUrl,
+      "_blank"
     );
   }
-
-  if (
-    !response.ok ||
-    !data.ok
-  ) {
-    throw new Error(
-      data.error ||
-      "Something went wrong"
-    );
-  }
-
-  return data;
 }
 
 // ======================================================
@@ -222,14 +252,12 @@ function updateHeader() {
 
   if (level) {
     level.textContent =
-      currentUser.level ||
-      1;
+      currentUser.level || 1;
   }
 
   if (xp) {
     xp.textContent =
-      currentUser.xp ||
-      0;
+      currentUser.xp || 0;
   }
 
   if (rank) {
@@ -248,13 +276,9 @@ function homePage() {
   if (!currentUser) {
     return `
       <h2>❄️ GUBI Hub</h2>
-      <p>Loading your profile...</p>
+      <p>Loading profile...</p>
     `;
   }
-
-  const progress =
-    currentUser.level_xp ||
-    0;
 
   const claimedToday =
     currentUser.last_checkin ===
@@ -291,7 +315,8 @@ function homePage() {
             margin-top:4px
           "
         >
-          ${progress} / 100 XP
+          ${currentUser.level_xp || 0}
+          / 100 XP
         </small>
       </span>
 
@@ -357,8 +382,8 @@ function homePage() {
         >
           ${
             claimedToday
-              ? "Completed for today ✓"
-              : "Claim your daily reward"
+              ? "Completed ✓"
+              : "Claim today's reward"
           }
         </small>
       </span>
@@ -388,14 +413,16 @@ function homePage() {
       }
     </button>
 
-    <div
-      class="notice"
+    <button
+      id="homeInviteBtn"
+      class="primary"
       style="
-        margin-top:16px
+        width:100%;
+        margin-top:10px
       "
     >
-      ❄️ GUBI eats the market.
-    </div>
+      👥 INVITE FRIEND
+    </button>
   `;
 }
 
@@ -452,7 +479,7 @@ function missionsPage() {
 
     <div class="mission">
       <span>
-        Visit official GUBI on X
+        Visit GUBI on X
       </span>
 
       <button
@@ -465,7 +492,7 @@ function missionsPage() {
 
     <div class="mission">
       <span>
-        Join GUBI Community
+        GUBI Community
       </span>
 
       <button
@@ -483,10 +510,11 @@ function missionsPage() {
         <small
           style="
             display:block;
-            opacity:.65
+            opacity:.65;
+            margin-top:4px
           "
         >
-          Earn +50 XP per new member
+          Earn +50 XP
         </small>
       </span>
 
@@ -517,13 +545,13 @@ function raidsPage() {
     <h2>📣 Raids</h2>
 
     <p>
-      Active GUBI community raids
-      will appear here.
+      Active GUBI raids will
+      appear here.
     </p>
 
     <div class="mission">
       <span>
-        Official GUBI X
+        GUBI on X
 
         <small
           style="
@@ -531,7 +559,7 @@ function raidsPage() {
             opacity:.65
           "
         >
-          Check the latest posts
+          View recent posts
         </small>
       </span>
 
@@ -544,8 +572,7 @@ function raidsPage() {
     </div>
 
     <div class="notice">
-      Raid XP verification
-      comes next.
+      Raid missions coming next.
     </div>
   `;
 }
@@ -553,16 +580,6 @@ function raidsPage() {
 // ======================================================
 // LEADERBOARD
 // ======================================================
-
-function leaderboardLoadingPage() {
-  return `
-    <h2>🏆 Leaderboard</h2>
-
-    <p>
-      Loading GUBI ranks...
-    </p>
-  `;
-}
 
 function getMedal(rank) {
   if (rank === 1) {
@@ -580,20 +597,24 @@ function getMedal(rank) {
   return `#${rank}`;
 }
 
+function leaderboardLoadingPage() {
+  return `
+    <h2>🏆 Leaderboard</h2>
+    <p>Loading ranks...</p>
+  `;
+}
+
 function leadersPage() {
   if (!leaderboardLoaded) {
     return leaderboardLoadingPage();
   }
 
-  if (
-    !leaderboard ||
-    leaderboard.length === 0
-  ) {
+  if (!leaderboard.length) {
     return `
       <h2>🏆 Leaderboard</h2>
 
       <div class="notice">
-        No GUBI members yet.
+        No members yet.
       </div>
     `;
   }
@@ -601,6 +622,7 @@ function leadersPage() {
   const rows =
     leaderboard
       .map(user => {
+
         const isMe =
           String(
             user.telegram_id
@@ -627,10 +649,10 @@ function leadersPage() {
                 align-items:center
               "
             >
+
               <b
                 style="
-                  min-width:32px;
-                  font-size:17px
+                  min-width:32px
                 "
               >
                 ${getMedal(
@@ -650,8 +672,7 @@ function leadersPage() {
                 <small
                   style="
                     display:block;
-                    opacity:.6;
-                    margin-top:3px
+                    opacity:.6
                   "
                 >
                   🔥 ${
@@ -660,34 +681,27 @@ function leadersPage() {
                   } day streak
                 </small>
               </span>
+
             </span>
 
             <b class="xp">
               ${user.xp || 0}
               XP
             </b>
+
           </div>
         `;
       })
       .join("");
 
-  const myPosition =
-    myRank?.rank
-      ? `#${myRank.rank}`
-      : "—";
-
   return `
     <h2>🏆 Leaderboard</h2>
-
-    <p>
-      Top GUBI community members.
-    </p>
 
     <div
       class="mission"
       style="
-        margin-bottom:16px;
-        border:2px solid #168cff
+        border:2px solid #168cff;
+        margin-bottom:16px
       "
     >
       <span>
@@ -695,7 +709,11 @@ function leadersPage() {
       </span>
 
       <b>
-        ${myPosition}
+        ${
+          myRank?.rank
+            ? `#${myRank.rank}`
+            : "—"
+        }
       </b>
     </div>
 
@@ -709,7 +727,7 @@ function leadersPage() {
         margin-top:14px
       "
     >
-      ↻ REFRESH RANKS
+      ↻ REFRESH
     </button>
   `;
 }
@@ -721,26 +739,17 @@ function leadersPage() {
 function profilePage() {
   if (!currentUser) {
     return `
-      <p>
-        Loading profile...
-      </p>
+      <p>Loading profile...</p>
     `;
   }
-
-  const name =
-    currentUser.username
-      ? `@${currentUser.username}`
-      : currentUser.first_name;
 
   const rankValue =
     currentUser.rank ||
     myRank?.rank ||
     "—";
 
-  const referralCount =
-    referralData?.count ??
-    currentUser.referral_count ??
-    0;
+  const referralLink =
+    getReferralLink();
 
   return `
     <h2>👤 Profile</h2>
@@ -748,16 +757,15 @@ function profilePage() {
     <p>
       <b>
         ${escapeHtml(
-          name ||
-          "GUBI Member"
+          displayName(
+            currentUser
+          )
         )}
       </b>
     </p>
 
     <div class="mission">
-      <span>
-        ❄️ Level
-      </span>
+      <span>❄️ Level</span>
 
       <b>
         ${currentUser.level || 1}
@@ -765,9 +773,7 @@ function profilePage() {
     </div>
 
     <div class="mission">
-      <span>
-        ⚡ Total XP
-      </span>
+      <span>⚡ Total XP</span>
 
       <b class="xp">
         ${currentUser.xp || 0}
@@ -775,9 +781,7 @@ function profilePage() {
     </div>
 
     <div class="mission">
-      <span>
-        🔥 Streak
-      </span>
+      <span>🔥 Streak</span>
 
       <b>
         ${
@@ -788,9 +792,7 @@ function profilePage() {
     </div>
 
     <div class="mission">
-      <span>
-        🏆 Rank
-      </span>
+      <span>🏆 Rank</span>
 
       <b>
         ${
@@ -801,36 +803,45 @@ function profilePage() {
       </b>
     </div>
 
-    <div style="height:14px"></div>
-
-    <h2>👥 Invite Friends</h2>
-
     <div class="mission">
       <span>
-        Friends invited
+        👥 Friends invited
 
         <small
           style="
             display:block;
-            opacity:.65;
-            margin-top:4px
+            opacity:.65
           "
         >
-          +50 XP for every new member
+          +50 XP each
         </small>
       </span>
 
       <b>
-        ${referralCount}
+        ${
+          currentUser.referral_count ||
+          0
+        }
       </b>
     </div>
 
     ${
-      referralLoaded &&
-      referralData?.link
+      referralLink
         ? `
+          <div
+            class="notice"
+            style="
+              margin-top:14px;
+              word-break:break-all
+            "
+          >
+            ${escapeHtml(
+              referralLink
+            )}
+          </div>
+
           <button
-            id="shareReferralBtn"
+            id="profileInviteBtn"
             class="primary"
             style="
               width:100%;
@@ -849,47 +860,29 @@ function profilePage() {
               border-radius:12px;
               border:1px solid #d7e7f8;
               background:white;
-              font-weight:700;
+              font-weight:700
             "
           >
-            COPY LINK
+            COPY INVITE LINK
           </button>
         `
         : `
-          <button
-            id="loadReferralBtn"
-            class="primary"
-            style="
-              width:100%;
-              margin-top:12px
-            "
-          >
-            LOAD INVITE LINK
-          </button>
+          <div class="notice">
+            Invite link unavailable.
+          </div>
         `
     }
-
-    <div
-      class="notice"
-      style="
-        margin-top:16px
-      "
-    >
-      Each Telegram account can only
-      count as one referral.
-    </div>
   `;
 }
 
 // ======================================================
-// RENDER
+// RENDER PAGE
 // ======================================================
 
 function renderPage(
   page = activePage
 ) {
-  activePage =
-    page;
+  activePage = page;
 
   const screen =
     document.querySelector(
@@ -901,20 +894,11 @@ function renderPage(
   }
 
   const pages = {
-    home:
-      homePage,
-
-    missions:
-      missionsPage,
-
-    raids:
-      raidsPage,
-
-    leaders:
-      leadersPage,
-
-    profile:
-      profilePage
+    home: homePage,
+    missions: missionsPage,
+    raids: raidsPage,
+    leaders: leadersPage,
+    profile: profilePage
   };
 
   screen.innerHTML =
@@ -935,13 +919,12 @@ async function claimCheckin(
     return;
   }
 
-  button.disabled =
-    true;
-
+  button.disabled = true;
   button.textContent =
     "CLAIMING...";
 
   try {
+
     const data =
       await apiRequest(
         "/api/checkin"
@@ -958,17 +941,20 @@ async function claimCheckin(
     if (
       data.already_claimed
     ) {
+
       showMessage(
-        "You already claimed today's XP. ❄️"
+        "Already claimed today. ❄️"
       );
+
     } else {
+
       tg?.HapticFeedback
         ?.notificationOccurred(
           "success"
         );
 
       showMessage(
-        `+${data.reward} XP! 🔥\nStreak: ${currentUser.streak} day(s)`
+        `+${data.reward} XP! 🔥`
       );
     }
 
@@ -977,10 +963,6 @@ async function claimCheckin(
     );
 
   } catch (error) {
-
-    console.error(
-      error
-    );
 
     button.disabled =
       false;
@@ -995,12 +977,13 @@ async function claimCheckin(
 }
 
 // ======================================================
-// LEADERBOARD LOAD
+// LEADERBOARD
 // ======================================================
 
 async function loadLeaderboard(
   force = false
 ) {
+
   if (
     leaderboardLoaded &&
     !force
@@ -1008,21 +991,8 @@ async function loadLeaderboard(
     return;
   }
 
-  const screen =
-    document.querySelector(
-      "#screen"
-    );
-
-  if (
-    activePage ===
-    "leaders" &&
-    screen
-  ) {
-    screen.innerHTML =
-      leaderboardLoadingPage();
-  }
-
   try {
+
     const data =
       await apiRequest(
         "/api/leaderboard"
@@ -1043,6 +1013,7 @@ async function loadLeaderboard(
       currentUser &&
       myRank?.rank
     ) {
+
       currentUser.rank =
         myRank.rank;
     }
@@ -1053,6 +1024,7 @@ async function loadLeaderboard(
       activePage ===
       "leaders"
     ) {
+
       renderPage(
         "leaders"
       );
@@ -1061,100 +1033,6 @@ async function loadLeaderboard(
   } catch (error) {
 
     console.error(
-      "Leaderboard:",
-      error
-    );
-
-    if (
-      activePage ===
-        "leaders" &&
-      screen
-    ) {
-      screen.innerHTML = `
-        <h2>
-          🏆 Leaderboard
-        </h2>
-
-        <div class="notice">
-          ${escapeHtml(
-            error.message
-          )}
-        </div>
-
-        <button
-          id="retryRanksBtn"
-          class="primary"
-          style="
-            width:100%;
-            margin-top:14px
-          "
-        >
-          TRY AGAIN
-        </button>
-      `;
-
-      document
-        .querySelector(
-          "#retryRanksBtn"
-        )
-        ?.addEventListener(
-          "click",
-          () =>
-            loadLeaderboard(
-              true
-            )
-        );
-    }
-  }
-}
-
-// ======================================================
-// REFERRAL LOAD
-// ======================================================
-
-async function loadReferral(
-  force = false
-) {
-  if (
-    referralLoaded &&
-    !force
-  ) {
-    return;
-  }
-
-  try {
-    const data =
-      await apiRequest(
-        "/api/referral"
-      );
-
-    referralData =
-      data.referral;
-
-    referralLoaded =
-      true;
-
-    if (
-      currentUser &&
-      referralData
-    ) {
-      currentUser.referral_count =
-        referralData.count;
-    }
-
-    if (
-      activePage ===
-      "profile"
-    ) {
-      renderPage(
-        "profile"
-      );
-    }
-
-  } catch (error) {
-
-    console.error(
-      "Referral:",
       error
     );
 
@@ -1165,56 +1043,11 @@ async function loadReferral(
 }
 
 // ======================================================
-// SHARE REFERRAL
-// ======================================================
-
-async function shareReferral() {
-  if (
-    !referralData?.link
-  ) {
-    await loadReferral(
-      true
-    );
-  }
-
-  const link =
-    referralData?.link;
-
-  if (!link) {
-    return;
-  }
-
-  const text =
-    "Join me in the GUBI Community Hub. ❄️👀";
-
-  const shareUrl =
-    "https://t.me/share/url" +
-    `?url=${encodeURIComponent(
-      link
-    )}` +
-    `&text=${encodeURIComponent(
-      text
-    )}`;
-
-  if (
-    tg?.openTelegramLink
-  ) {
-    tg.openTelegramLink(
-      shareUrl
-    );
-  } else {
-    window.open(
-      shareUrl,
-      "_blank"
-    );
-  }
-}
-
-// ======================================================
-// PAGE ACTIONS
+// ACTIONS
 // ======================================================
 
 function bindPageActions() {
+
   const homeCheckin =
     document.querySelector(
       "#homeCheckinBtn"
@@ -1247,56 +1080,43 @@ function bindPageActions() {
     .querySelectorAll(
       ".missionAction"
     )
-    .forEach(
-      button => {
-        button.addEventListener(
-          "click",
-          () => {
-            const url =
-              button.dataset
-                .url;
+    .forEach(button => {
 
-            if (url) {
-              openLink(
-                url
-              );
-            }
+      button.addEventListener(
+        "click",
+        () => {
+
+          const url =
+            button.dataset.url;
+
+          if (url) {
+            openLink(url);
           }
-        );
-      }
-    );
+        }
+      );
+    });
 
   document
     .querySelector(
-      "#refreshRanksBtn"
+      "#homeInviteBtn"
     )
     ?.addEventListener(
       "click",
-      async () => {
-        leaderboardLoaded =
-          false;
-
-        await loadLeaderboard(
-          true
-        );
-      }
+      shareReferral
     );
 
   document
     .querySelector(
-      "#loadReferralBtn"
+      "#missionInviteBtn"
     )
     ?.addEventListener(
       "click",
-      () =>
-        loadReferral(
-          true
-        )
+      shareReferral
     );
 
   document
     .querySelector(
-      "#shareReferralBtn"
+      "#profileInviteBtn"
     )
     ?.addEventListener(
       "click",
@@ -1309,27 +1129,23 @@ function bindPageActions() {
     )
     ?.addEventListener(
       "click",
-      () => {
-        if (
-          referralData?.link
-        ) {
-          copyText(
-            referralData.link
-          );
-        }
-      }
+      copyReferralLink
     );
 
   document
     .querySelector(
-      "#missionInviteBtn"
+      "#refreshRanksBtn"
     )
     ?.addEventListener(
       "click",
       async () => {
-        await loadReferral();
 
-        await shareReferral();
+        leaderboardLoaded =
+          false;
+
+        await loadLeaderboard(
+          true
+        );
       }
     );
 }
@@ -1342,56 +1158,46 @@ document
   .querySelectorAll(
     "nav button"
   )
-  .forEach(
-    button => {
-      button.addEventListener(
-        "click",
-        async () => {
+  .forEach(button => {
 
-          document
-            .querySelectorAll(
-              "nav button"
-            )
-            .forEach(
-              item =>
-                item
-                  .classList
-                  .remove(
-                    "active"
-                  )
-            );
+    button.addEventListener(
+      "click",
+      async () => {
 
-          button
-            .classList
-            .add(
-              "active"
-            );
+        document
+          .querySelectorAll(
+            "nav button"
+          )
+          .forEach(item =>
 
-          const page =
-            button.dataset
-              .page;
-
-          renderPage(
-            page
+            item.classList
+              .remove(
+                "active"
+              )
           );
 
-          if (
-            page ===
-            "leaders"
-          ) {
-            await loadLeaderboard();
-          }
+        button.classList
+          .add(
+            "active"
+          );
 
-          if (
-            page ===
-            "profile"
-          ) {
-            await loadReferral();
-          }
+        const page =
+          button.dataset.page;
+
+        renderPage(
+          page
+        );
+
+        if (
+          page ===
+          "leaders"
+        ) {
+
+          await loadLeaderboard();
         }
-      );
-    }
-  );
+      }
+    );
+  });
 
 document
   .querySelector(
@@ -1403,16 +1209,18 @@ document
   );
 
 // ======================================================
-// INITIAL LOAD
+// INITIALIZE
 // ======================================================
 
 async function initializeGubi() {
+
   const screen =
     document.querySelector(
       "#screen"
     );
 
   if (screen) {
+
     screen.innerHTML = `
       <h2>
         ❄️ Entering the snow...
@@ -1425,6 +1233,7 @@ async function initializeGubi() {
   }
 
   try {
+
     const data =
       await apiRequest(
         "/api/me"
@@ -1439,10 +1248,7 @@ async function initializeGubi() {
       "home"
     );
 
-    // Load these quietly
-    // in the background.
     loadLeaderboard();
-    loadReferral();
 
   } catch (error) {
 
@@ -1451,6 +1257,7 @@ async function initializeGubi() {
     );
 
     if (screen) {
+
       screen.innerHTML = `
         <h2>
           ❄️ GUBI Hub
@@ -1463,8 +1270,7 @@ async function initializeGubi() {
         </p>
 
         <div class="notice">
-          Open this Mini App
-          directly from
+          Open GUBI Hub from
           @GubiCommunityBot.
         </div>
       `;
