@@ -1,1 +1,246 @@
-<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover'><title>GUBI Community Hub</title><link rel='stylesheet' href='style.css'><script src='https://telegram.org/js/telegram-web-app.js'></script></head><body><main id='app'><header><div class='brand'>GUBI</div><div class='tag'>COMMUNITY HUB</div></header><section class='hero'><div class='snow'>❄️</div><h1>GUBI eats the market.</h1><p id='hello'>Welcome to the snow.</p><div class='stats'><div><b id='level'>1</b><span>LEVEL</span></div><div><b id='xp'>0</b><span>XP</span></div><div><b id='rank'>—</b><span>RANK</span></div></div></section><section id='screen' class='card'><h2>Home</h2><p>Complete missions, earn XP and climb the GUBI ranks.</p><div class='notice'>⚠️ No official GUBI token yet.</div></section><nav><button data-page='home'>⌂<span>Home</span></button><button data-page='missions'>⚡<span>Missions</span></button><button data-page='raids'>📣<span>Raids</span></button><button data-page='leaders'>🏆<span>Ranks</span></button><button data-page='profile'>👤<span>Profile</span></button></nav></main><script src='script.js'></script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+  />
+
+  <meta
+    http-equiv="Cache-Control"
+    content="no-cache, no-store, must-revalidate"
+  />
+
+  <meta
+    http-equiv="Pragma"
+    content="no-cache"
+  />
+
+  <meta
+    http-equiv="Expires"
+    content="0"
+  />
+
+  <title>GUBI Community Hub</title>
+
+  <!-- Telegram Mini App SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <!-- Styles -->
+  <link
+    rel="stylesheet"
+    href="./style.css?v=20260925-4"
+  />
+</head>
+
+<body>
+
+  <div class="app">
+
+    <!-- ========================================= -->
+    <!-- HEADER -->
+    <!-- ========================================= -->
+
+    <header class="top">
+
+      <div class="brand">
+
+        <div class="snow-logo">
+          ❄️
+        </div>
+
+        <div>
+          <h1>
+            GUBI COMMUNITY HUB
+          </h1>
+
+          <p>
+            GUBI eats the market.
+          </p>
+        </div>
+
+      </div>
+
+      <div class="welcome">
+
+        <p id="hello">
+          Welcome to the snow 👀
+        </p>
+
+      </div>
+
+    </header>
+
+    <!-- ========================================= -->
+    <!-- STATS -->
+    <!-- ========================================= -->
+
+    <section class="stats">
+
+      <div class="stat">
+
+        <span>
+          Level
+        </span>
+
+        <strong id="level">
+          1
+        </strong>
+
+      </div>
+
+      <div class="stat">
+
+        <span>
+          XP
+        </span>
+
+        <strong id="xp">
+          0
+        </strong>
+
+      </div>
+
+      <div class="stat">
+
+        <span>
+          Rank
+        </span>
+
+        <strong id="rank">
+          —
+        </strong>
+
+      </div>
+
+    </section>
+
+    <!-- ========================================= -->
+    <!-- MAIN CONTENT -->
+    <!-- ========================================= -->
+
+    <main
+      id="screen"
+      class="screen"
+    >
+
+      <h2>
+        ❄️ Entering the snow...
+      </h2>
+
+      <p>
+        Loading your GUBI profile.
+      </p>
+
+    </main>
+
+    <!-- ========================================= -->
+    <!-- SAFETY NOTICE -->
+    <!-- ========================================= -->
+
+    <div class="token-notice">
+
+      ⚠️ NO OFFICIAL GUBI TOKEN YET
+
+    </div>
+
+  </div>
+
+  <!-- ========================================= -->
+  <!-- BOTTOM NAVIGATION -->
+  <!-- ========================================= -->
+
+  <nav>
+
+    <button
+      type="button"
+      data-page="home"
+      class="active"
+    >
+
+      <span class="nav-icon">
+        🏠
+      </span>
+
+      <span>
+        Home
+      </span>
+
+    </button>
+
+    <button
+      type="button"
+      data-page="missions"
+    >
+
+      <span class="nav-icon">
+        ⚡
+      </span>
+
+      <span>
+        Missions
+      </span>
+
+    </button>
+
+    <button
+      type="button"
+      data-page="raids"
+    >
+
+      <span class="nav-icon">
+        📣
+      </span>
+
+      <span>
+        Raids
+      </span>
+
+    </button>
+
+    <button
+      type="button"
+      data-page="leaders"
+    >
+
+      <span class="nav-icon">
+        🏆
+      </span>
+
+      <span>
+        Ranks
+      </span>
+
+    </button>
+
+    <button
+      type="button"
+      data-page="profile"
+    >
+
+      <span class="nav-icon">
+        👤
+      </span>
+
+      <span>
+        Profile
+      </span>
+
+    </button>
+
+  </nav>
+
+  <!-- ========================================= -->
+  <!-- GUBI APP -->
+  <!-- IMPORTANT:
+       version number forces Telegram/GitHub
+       to load the NEW script instead of cache
+  -->
+  <!-- ========================================= -->
+
+  <script src="./script.js?v=20260925-4"></script>
+
+</body>
+</html>
