@@ -10,6 +10,9 @@ let leaderboard = [];
 let myRank = null;
 let leaderboardLoaded = false;
 
+let missions = [];
+let missionsLoaded = false;
+
 // ======================================================
 // TELEGRAM
 // ======================================================
@@ -47,7 +50,10 @@ function displayName(user) {
     return `@${user.username}`;
   }
 
-  return user.first_name || "GUBI Member";
+  return (
+    user.first_name ||
+    "GUBI Member"
+  );
 }
 
 function showMessage(message) {
@@ -59,10 +65,25 @@ function showMessage(message) {
 }
 
 function openLink(url) {
+  if (!url) {
+    return;
+  }
+
+  if (
+    url.includes("t.me/") &&
+    tg?.openTelegramLink
+  ) {
+    tg.openTelegramLink(url);
+    return;
+  }
+
   if (tg?.openLink) {
     tg.openLink(url);
   } else {
-    window.open(url, "_blank");
+    window.open(
+      url,
+      "_blank"
+    );
   }
 }
 
@@ -70,40 +91,54 @@ function openLink(url) {
 // API
 // ======================================================
 
-async function apiRequest(path, options = {}) {
+async function apiRequest(
+  path,
+  options = {}
+) {
   if (!tg?.initData) {
     throw new Error(
       "Open GUBI Hub from Telegram."
     );
   }
 
-  const response = await fetch(
-    `${API_URL}${path}`,
-    {
-      method: options.method || "POST",
+  const response =
+    await fetch(
+      `${API_URL}${path}`,
+      {
+        method:
+          options.method ||
+          "POST",
 
-      headers: {
-        "Content-Type": "application/json"
-      },
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
 
-      body: JSON.stringify({
-        initData: tg.initData,
-        ...(options.body || {})
-      })
-    }
-  );
+        body:
+          JSON.stringify({
+            initData:
+              tg.initData,
+
+            ...(options.body || {})
+          })
+      }
+    );
 
   let data;
 
   try {
-    data = await response.json();
+    data =
+      await response.json();
   } catch {
     throw new Error(
       "Invalid server response"
     );
   }
 
-  if (!response.ok || !data.ok) {
+  if (
+    !response.ok ||
+    !data.ok
+  ) {
     throw new Error(
       data.error ||
       "Something went wrong"
@@ -114,11 +149,13 @@ async function apiRequest(path, options = {}) {
 }
 
 // ======================================================
-// REFERRAL LINK
+// REFERRALS
 // ======================================================
 
 function getReferralLink() {
-  if (!currentUser?.telegram_id) {
+  if (
+    !currentUser?.telegram_id
+  ) {
     return null;
   }
 
@@ -160,10 +197,13 @@ async function copyReferralLink() {
         "textarea"
       );
 
-    textarea.value = link;
+    textarea.value =
+      link;
 
     document.body
-      .appendChild(textarea);
+      .appendChild(
+        textarea
+      );
 
     textarea.select();
 
@@ -191,15 +231,21 @@ function shareReferral() {
     return;
   }
 
-  const message =
+  const text =
     "Join me in the GUBI Community Hub. ❄️👀";
 
   const shareUrl =
     "https://t.me/share/url" +
-    `?url=${encodeURIComponent(link)}` +
-    `&text=${encodeURIComponent(message)}`;
+    `?url=${encodeURIComponent(
+      link
+    )}` +
+    `&text=${encodeURIComponent(
+      text
+    )}`;
 
-  if (tg?.openTelegramLink) {
+  if (
+    tg?.openTelegramLink
+  ) {
     tg.openTelegramLink(
       shareUrl
     );
@@ -252,12 +298,14 @@ function updateHeader() {
 
   if (level) {
     level.textContent =
-      currentUser.level || 1;
+      currentUser.level ||
+      1;
   }
 
   if (xp) {
     xp.textContent =
-      currentUser.xp || 0;
+      currentUser.xp ||
+      0;
   }
 
   if (rank) {
@@ -306,7 +354,8 @@ function homePage() {
 
     <div class="mission">
       <span>
-        Level ${currentUser.level || 1}
+        Level
+        ${currentUser.level || 1}
 
         <small
           style="
@@ -315,13 +364,18 @@ function homePage() {
             margin-top:4px
           "
         >
-          ${currentUser.level_xp || 0}
-          / 100 XP
+          ${
+            currentUser.level_xp ||
+            0
+          } / 100 XP
         </small>
       </span>
 
       <b class="xp">
-        ${currentUser.xp || 0} XP
+        ${
+          currentUser.xp ||
+          0
+        } XP
       </b>
     </div>
 
@@ -331,8 +385,10 @@ function homePage() {
       </span>
 
       <b>
-        ${currentUser.streak || 0}
-        days
+        ${
+          currentUser.streak ||
+          0
+        } days
       </b>
     </div>
 
@@ -427,113 +483,531 @@ function homePage() {
 }
 
 // ======================================================
+// MISSION LOCAL STATE
+// ======================================================
+
+function missionOpenedKey(
+  missionId
+) {
+  return (
+    `gubi_mission_opened_` +
+    `${currentUser?.telegram_id || "user"}_` +
+    `${missionId}`
+  );
+}
+
+function missionWasOpened(
+  missionId
+) {
+  return (
+    localStorage.getItem(
+      missionOpenedKey(
+        missionId
+      )
+    ) === "1"
+  );
+}
+
+function markMissionOpened(
+  missionId
+) {
+  localStorage.setItem(
+    missionOpenedKey(
+      missionId
+    ),
+    "1"
+  );
+}
+
+// ======================================================
 // MISSIONS
 // ======================================================
 
+function missionsLoadingPage() {
+  return `
+    <h2>⚡ Missions</h2>
+
+    <p>
+      Loading missions...
+    </p>
+  `;
+}
+
+function missionButton(
+  mission
+) {
+  if (
+    mission.status ===
+      "completed" ||
+    mission.claimed
+  ) {
+    return `
+      <button
+        disabled
+        style="
+          padding:10px 14px;
+          border:0;
+          border-radius:12px;
+          font-weight:800;
+          opacity:.7
+        "
+      >
+        ✓ COMPLETED
+      </button>
+    `;
+  }
+
+  if (
+    mission.id ===
+    "daily_checkin"
+  ) {
+    return `
+      <button
+        id="dailyMissionCheckin"
+        class="primary"
+        style="
+          padding:10px 14px
+        "
+      >
+        CLAIM
+      </button>
+    `;
+  }
+
+  if (
+    mission.id ===
+    "invite_friend"
+  ) {
+    return `
+      <button
+        id="missionInviteBtn"
+        class="primary"
+        style="
+          padding:10px 14px
+        "
+      >
+        INVITE
+      </button>
+    `;
+  }
+
+  const opened =
+    missionWasOpened(
+      mission.id
+    );
+
+  if (
+    opened
+  ) {
+    return `
+      <button
+        class="claimMissionBtn primary"
+        data-mission-id="${escapeHtml(
+          mission.id
+        )}"
+        style="
+          padding:10px 14px
+        "
+      >
+        CLAIM
+      </button>
+    `;
+  }
+
+  return `
+    <button
+      class="goMissionBtn"
+      data-mission-id="${escapeHtml(
+        mission.id
+      )}"
+      data-url="${escapeHtml(
+        mission.action_url ||
+        ""
+      )}"
+      style="
+        padding:10px 14px;
+        border-radius:12px;
+        border:1px solid #d7e7f8;
+        background:white;
+        font-weight:800
+      "
+    >
+      GO →
+    </button>
+  `;
+}
+
 function missionsPage() {
-  const claimedToday =
-    currentUser?.last_checkin ===
-    todayUTC();
+  if (!missionsLoaded) {
+    return missionsLoadingPage();
+  }
+
+  if (!missions.length) {
+    return `
+      <h2>⚡ Missions</h2>
+
+      <div class="notice">
+        No active missions right now.
+      </div>
+    `;
+  }
+
+  const rows =
+    missions
+      .map(
+        mission => `
+          <div
+            class="mission"
+            style="
+              align-items:center;
+            "
+          >
+            <span>
+              <b>
+                ${escapeHtml(
+                  mission.title
+                )}
+              </b>
+
+              <small
+                style="
+                  display:block;
+                  opacity:.65;
+                  margin-top:4px;
+                  max-width:220px
+                "
+              >
+                ${escapeHtml(
+                  mission.description ||
+                  ""
+                )}
+              </small>
+
+              <small
+                style="
+                  display:block;
+                  color:#168cff;
+                  font-weight:800;
+                  margin-top:5px
+                "
+              >
+                +${
+                  mission.xp_reward ||
+                  0
+                } XP
+              </small>
+            </span>
+
+            ${missionButton(
+              mission
+            )}
+          </div>
+        `
+      )
+      .join("");
 
   return `
     <h2>⚡ Missions</h2>
 
-    <div class="mission">
-      <span>
-        Daily check-in
+    <p>
+      Complete missions.
+      Earn XP.
+      Climb the ranks. ❄️
+    </p>
 
-        <small
-          style="
-            display:block;
-            opacity:.65
-          "
-        >
-          Keep your streak alive
-        </small>
-      </span>
+    ${rows}
 
-      <b class="xp">
-        +10 XP
-      </b>
-    </div>
-
-    <button
-      id="missionCheckinBtn"
-      class="primary"
-      ${
-        claimedToday
-          ? "disabled"
-          : ""
-      }
+    <div
+      class="notice"
       style="
-        width:100%;
-        margin:10px 0 18px
+        margin-top:16px
       "
     >
-      ${
-        claimedToday
-          ? "✓ COMPLETED"
-          : "CLAIM +10 XP"
-      }
-    </button>
-
-    <div class="mission">
-      <span>
-        Visit GUBI on X
-      </span>
-
-      <button
-        class="missionAction"
-        data-url="https://x.com/ItsGubi"
-      >
-        GO →
-      </button>
+      Social missions currently use
+      GO → CLAIM.
+      Automated verification will
+      be added later.
     </div>
-
-    <div class="mission">
-      <span>
-        GUBI Community
-      </span>
-
-      <button
-        class="missionAction"
-        data-url="https://t.me/GUBIcomunity"
-      >
-        GO →
-      </button>
-    </div>
-
-    <div class="mission">
-      <span>
-        Invite a friend
-
-        <small
-          style="
-            display:block;
-            opacity:.65;
-            margin-top:4px
-          "
-        >
-          Earn +50 XP
-        </small>
-      </span>
-
-      <b class="xp">
-        +50 XP
-      </b>
-    </div>
-
-    <button
-      id="missionInviteBtn"
-      class="primary"
-      style="
-        width:100%;
-        margin-top:10px
-      "
-    >
-      👥 INVITE FRIEND
-    </button>
   `;
+}
+
+// ======================================================
+// LOAD MISSIONS
+// ======================================================
+
+async function loadMissions(
+  force = false
+) {
+  if (
+    missionsLoaded &&
+    !force
+  ) {
+    return;
+  }
+
+  if (
+    activePage ===
+    "missions"
+  ) {
+    const screen =
+      document.querySelector(
+        "#screen"
+      );
+
+    if (screen) {
+      screen.innerHTML =
+        missionsLoadingPage();
+    }
+  }
+
+  try {
+
+    const data =
+      await apiRequest(
+        "/api/missions"
+      );
+
+    missions =
+      data.missions ||
+      [];
+
+    missionsLoaded =
+      true;
+
+    if (
+      data.user
+    ) {
+      currentUser =
+        data.user;
+
+      updateHeader();
+    }
+
+    if (
+      activePage ===
+      "missions"
+    ) {
+      renderPage(
+        "missions"
+      );
+    }
+
+  } catch (error) {
+
+    console.error(
+      "Missions:",
+      error
+    );
+
+    showMessage(
+      error.message
+    );
+  }
+}
+
+// ======================================================
+// OPEN MISSION
+// ======================================================
+
+function openMission(
+  missionId,
+  url
+) {
+  markMissionOpened(
+    missionId
+  );
+
+  const mission =
+    missions.find(
+      item =>
+        item.id ===
+        missionId
+    );
+
+  if (
+    mission
+  ) {
+    renderPage(
+      "missions"
+    );
+  }
+
+  if (url) {
+    openLink(
+      url
+    );
+  }
+}
+
+// ======================================================
+// CLAIM MISSION
+// ======================================================
+
+async function claimMission(
+  missionId,
+  button
+) {
+  if (!missionId) {
+    return;
+  }
+
+  if (button) {
+    button.disabled =
+      true;
+
+    button.textContent =
+      "CLAIMING...";
+  }
+
+  try {
+
+    const data =
+      await apiRequest(
+        "/api/claim-mission",
+        {
+          body: {
+            missionId
+          }
+        }
+      );
+
+    if (
+      data.user
+    ) {
+      currentUser =
+        data.user;
+    }
+
+    leaderboardLoaded =
+      false;
+
+    updateHeader();
+
+    if (
+      data.already_claimed
+    ) {
+      showMessage(
+        "Mission already completed. ❄️"
+      );
+    } else {
+
+      tg?.HapticFeedback
+        ?.notificationOccurred(
+          "success"
+        );
+
+      showMessage(
+        `Mission complete! +${data.reward} XP 🔥`
+      );
+    }
+
+    missionsLoaded =
+      false;
+
+    await loadMissions(
+      true
+    );
+
+  } catch (error) {
+
+    console.error(
+      error
+    );
+
+    if (button) {
+      button.disabled =
+        false;
+
+      button.textContent =
+        "CLAIM";
+    }
+
+    showMessage(
+      error.message
+    );
+  }
+}
+
+// ======================================================
+// DAILY CHECK-IN
+// ======================================================
+
+async function claimCheckin(
+  button
+) {
+  if (!button) {
+    return;
+  }
+
+  button.disabled =
+    true;
+
+  button.textContent =
+    "CLAIMING...";
+
+  try {
+
+    const data =
+      await apiRequest(
+        "/api/checkin"
+      );
+
+    currentUser =
+      data.user;
+
+    leaderboardLoaded =
+      false;
+
+    missionsLoaded =
+      false;
+
+    updateHeader();
+
+    if (
+      data.already_claimed
+    ) {
+
+      showMessage(
+        "Already claimed today. ❄️"
+      );
+
+    } else {
+
+      tg?.HapticFeedback
+        ?.notificationOccurred(
+          "success"
+        );
+
+      showMessage(
+        `+${data.reward} XP! 🔥`
+      );
+    }
+
+    if (
+      activePage ===
+      "missions"
+    ) {
+      await loadMissions(
+        true
+      );
+    } else {
+      renderPage(
+        activePage
+      );
+    }
+
+  } catch (error) {
+
+    button.disabled =
+      false;
+
+    button.textContent =
+      "CLAIM +10 XP";
+
+    showMessage(
+      error.message
+    );
+  }
 }
 
 // ======================================================
@@ -545,13 +1019,13 @@ function raidsPage() {
     <h2>📣 Raids</h2>
 
     <p>
-      Active GUBI raids will
-      appear here.
+      Active GUBI raids
+      will appear here.
     </p>
 
     <div class="mission">
       <span>
-        GUBI on X
+        Official GUBI on X
 
         <small
           style="
@@ -559,7 +1033,7 @@ function raidsPage() {
             opacity:.65
           "
         >
-          View recent posts
+          Check the latest posts.
         </small>
       </span>
 
@@ -572,7 +1046,7 @@ function raidsPage() {
     </div>
 
     <div class="notice">
-      Raid missions coming next.
+      Real raid system comes next.
     </div>
   `;
 }
@@ -621,77 +1095,78 @@ function leadersPage() {
 
   const rows =
     leaderboard
-      .map(user => {
+      .map(
+        user => {
 
-        const isMe =
-          String(
-            user.telegram_id
-          ) ===
-          String(
-            currentUser?.telegram_id
-          );
+          const isMe =
+            String(
+              user.telegram_id
+            ) ===
+            String(
+              currentUser?.telegram_id
+            );
 
-        return `
-          <div
-            class="mission"
-            style="
-              ${
-                isMe
-                  ? "border:2px solid #168cff;"
-                  : ""
-              }
-            "
-          >
-            <span
+          return `
+            <div
+              class="mission"
               style="
-                display:flex;
-                gap:10px;
-                align-items:center
+                ${
+                  isMe
+                    ? "border:2px solid #168cff;"
+                    : ""
+                }
               "
             >
-
-              <b
+              <span
                 style="
-                  min-width:32px
+                  display:flex;
+                  gap:10px;
+                  align-items:center
                 "
               >
-                ${getMedal(
-                  user.rank
-                )}
-              </b>
-
-              <span>
-                <b>
-                  ${escapeHtml(
-                    displayName(
-                      user
-                    )
+                <b
+                  style="
+                    min-width:32px
+                  "
+                >
+                  ${getMedal(
+                    user.rank
                   )}
                 </b>
 
-                <small
-                  style="
-                    display:block;
-                    opacity:.6
-                  "
-                >
-                  🔥 ${
-                    user.streak ||
-                    0
-                  } day streak
-                </small>
+                <span>
+                  <b>
+                    ${escapeHtml(
+                      displayName(
+                        user
+                      )
+                    )}
+                  </b>
+
+                  <small
+                    style="
+                      display:block;
+                      opacity:.6
+                    "
+                  >
+                    🔥 ${
+                      user.streak ||
+                      0
+                    } day streak
+                  </small>
+                </span>
               </span>
 
-            </span>
-
-            <b class="xp">
-              ${user.xp || 0}
-              XP
-            </b>
-
-          </div>
-        `;
-      })
+              <b class="xp">
+                ${
+                  user.xp ||
+                  0
+                } XP
+              </b>
+            </div>
+          `;
+        }
+      )
       .join("");
 
   return `
@@ -732,6 +1207,66 @@ function leadersPage() {
   `;
 }
 
+async function loadLeaderboard(
+  force = false
+) {
+  if (
+    leaderboardLoaded &&
+    !force
+  ) {
+    return;
+  }
+
+  try {
+
+    const data =
+      await apiRequest(
+        "/api/leaderboard"
+      );
+
+    leaderboard =
+      data.leaderboard ||
+      [];
+
+    myRank =
+      data.me ||
+      null;
+
+    leaderboardLoaded =
+      true;
+
+    if (
+      currentUser &&
+      myRank?.rank
+    ) {
+      currentUser.rank =
+        myRank.rank;
+    }
+
+    updateHeader();
+
+    if (
+      activePage ===
+      "leaders"
+    ) {
+      renderPage(
+        "leaders"
+      );
+    }
+
+  } catch (error) {
+
+    console.error(
+      "Leaderboard:",
+      error
+    );
+
+    showMessage(
+      error.message
+    );
+  }
+}
+
 // ======================================================
 // PROFILE
 // ======================================================
@@ -739,7 +1274,9 @@ function leadersPage() {
 function profilePage() {
   if (!currentUser) {
     return `
-      <p>Loading profile...</p>
+      <p>
+        Loading profile...
+      </p>
     `;
   }
 
@@ -765,7 +1302,9 @@ function profilePage() {
     </p>
 
     <div class="mission">
-      <span>❄️ Level</span>
+      <span>
+        ❄️ Level
+      </span>
 
       <b>
         ${currentUser.level || 1}
@@ -773,7 +1312,9 @@ function profilePage() {
     </div>
 
     <div class="mission">
-      <span>⚡ Total XP</span>
+      <span>
+        ⚡ Total XP
+      </span>
 
       <b class="xp">
         ${currentUser.xp || 0}
@@ -781,7 +1322,9 @@ function profilePage() {
     </div>
 
     <div class="mission">
-      <span>🔥 Streak</span>
+      <span>
+        🔥 Streak
+      </span>
 
       <b>
         ${
@@ -792,7 +1335,9 @@ function profilePage() {
     </div>
 
     <div class="mission">
-      <span>🏆 Rank</span>
+      <span>
+        🏆 Rank
+      </span>
 
       <b>
         ${
@@ -866,23 +1411,20 @@ function profilePage() {
             COPY INVITE LINK
           </button>
         `
-        : `
-          <div class="notice">
-            Invite link unavailable.
-          </div>
-        `
+        : ""
     }
   `;
 }
 
 // ======================================================
-// RENDER PAGE
+// RENDER
 // ======================================================
 
 function renderPage(
   page = activePage
 ) {
-  activePage = page;
+  activePage =
+    page;
 
   const screen =
     document.querySelector(
@@ -894,11 +1436,21 @@ function renderPage(
   }
 
   const pages = {
-    home: homePage,
-    missions: missionsPage,
-    raids: raidsPage,
-    leaders: leadersPage,
-    profile: profilePage
+
+    home:
+      homePage,
+
+    missions:
+      missionsPage,
+
+    raids:
+      raidsPage,
+
+    leaders:
+      leadersPage,
+
+    profile:
+      profilePage
   };
 
   screen.innerHTML =
@@ -906,140 +1458,6 @@ function renderPage(
     homePage();
 
   bindPageActions();
-}
-
-// ======================================================
-// CHECK-IN
-// ======================================================
-
-async function claimCheckin(
-  button
-) {
-  if (!button) {
-    return;
-  }
-
-  button.disabled = true;
-  button.textContent =
-    "CLAIMING...";
-
-  try {
-
-    const data =
-      await apiRequest(
-        "/api/checkin"
-      );
-
-    currentUser =
-      data.user;
-
-    leaderboardLoaded =
-      false;
-
-    updateHeader();
-
-    if (
-      data.already_claimed
-    ) {
-
-      showMessage(
-        "Already claimed today. ❄️"
-      );
-
-    } else {
-
-      tg?.HapticFeedback
-        ?.notificationOccurred(
-          "success"
-        );
-
-      showMessage(
-        `+${data.reward} XP! 🔥`
-      );
-    }
-
-    renderPage(
-      activePage
-    );
-
-  } catch (error) {
-
-    button.disabled =
-      false;
-
-    button.textContent =
-      "CLAIM +10 XP";
-
-    showMessage(
-      error.message
-    );
-  }
-}
-
-// ======================================================
-// LEADERBOARD
-// ======================================================
-
-async function loadLeaderboard(
-  force = false
-) {
-
-  if (
-    leaderboardLoaded &&
-    !force
-  ) {
-    return;
-  }
-
-  try {
-
-    const data =
-      await apiRequest(
-        "/api/leaderboard"
-      );
-
-    leaderboard =
-      data.leaderboard ||
-      [];
-
-    myRank =
-      data.me ||
-      null;
-
-    leaderboardLoaded =
-      true;
-
-    if (
-      currentUser &&
-      myRank?.rank
-    ) {
-
-      currentUser.rank =
-        myRank.rank;
-    }
-
-    updateHeader();
-
-    if (
-      activePage ===
-      "leaders"
-    ) {
-
-      renderPage(
-        "leaders"
-      );
-    }
-
-  } catch (error) {
-
-    console.error(
-      error
-    );
-
-    showMessage(
-      error.message
-    );
-  }
 }
 
 // ======================================================
@@ -1053,11 +1471,6 @@ function bindPageActions() {
       "#homeCheckinBtn"
     );
 
-  const missionCheckin =
-    document.querySelector(
-      "#missionCheckinBtn"
-    );
-
   homeCheckin
     ?.addEventListener(
       "click",
@@ -1067,34 +1480,82 @@ function bindPageActions() {
         )
     );
 
-  missionCheckin
+  document
+    .querySelector(
+      "#dailyMissionCheckin"
+    )
     ?.addEventListener(
       "click",
-      () =>
+      event =>
         claimCheckin(
-          missionCheckin
+          event.currentTarget
         )
+    );
+
+  document
+    .querySelectorAll(
+      ".goMissionBtn"
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          "click",
+          () => {
+
+            openMission(
+              button.dataset
+                .missionId,
+
+              button.dataset
+                .url
+            );
+          }
+        );
+      }
+    );
+
+  document
+    .querySelectorAll(
+      ".claimMissionBtn"
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          "click",
+          () => {
+
+            claimMission(
+              button.dataset
+                .missionId,
+
+              button
+            );
+          }
+        );
+      }
     );
 
   document
     .querySelectorAll(
       ".missionAction"
     )
-    .forEach(button => {
+    .forEach(
+      button => {
 
-      button.addEventListener(
-        "click",
-        () => {
+        button.addEventListener(
+          "click",
+          () => {
 
-          const url =
-            button.dataset.url;
-
-          if (url) {
-            openLink(url);
+            openLink(
+              button.dataset
+                .url
+            );
           }
-        }
-      );
-    });
+        );
+      }
+    );
 
   document
     .querySelector(
@@ -1138,15 +1599,10 @@ function bindPageActions() {
     )
     ?.addEventListener(
       "click",
-      async () => {
-
-        leaderboardLoaded =
-          false;
-
-        await loadLeaderboard(
+      () =>
+        loadLeaderboard(
           true
-        );
-      }
+        )
     );
 }
 
@@ -1158,46 +1614,55 @@ document
   .querySelectorAll(
     "nav button"
   )
-  .forEach(button => {
+  .forEach(
+    button => {
 
-    button.addEventListener(
-      "click",
-      async () => {
+      button.addEventListener(
+        "click",
+        async () => {
 
-        document
-          .querySelectorAll(
-            "nav button"
-          )
-          .forEach(item =>
+          document
+            .querySelectorAll(
+              "nav button"
+            )
+            .forEach(
+              item =>
 
-            item.classList
-              .remove(
-                "active"
-              )
+                item.classList
+                  .remove(
+                    "active"
+                  )
+            );
+
+          button.classList
+            .add(
+              "active"
+            );
+
+          const page =
+            button.dataset.page;
+
+          renderPage(
+            page
           );
 
-        button.classList
-          .add(
-            "active"
-          );
+          if (
+            page ===
+            "missions"
+          ) {
+            await loadMissions();
+          }
 
-        const page =
-          button.dataset.page;
-
-        renderPage(
-          page
-        );
-
-        if (
-          page ===
-          "leaders"
-        ) {
-
-          await loadLeaderboard();
+          if (
+            page ===
+            "leaders"
+          ) {
+            await loadLeaderboard();
+          }
         }
-      }
-    );
-  });
+      );
+    }
+  );
 
 document
   .querySelector(
@@ -1248,7 +1713,9 @@ async function initializeGubi() {
       "home"
     );
 
+    // Background loading
     loadLeaderboard();
+    loadMissions();
 
   } catch (error) {
 
